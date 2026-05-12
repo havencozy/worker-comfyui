@@ -6,9 +6,9 @@ FROM ${BASE_IMAGE} AS base
 
 # Build arguments for this stage with sensible defaults for standalone builds
 ARG COMFYUI_VERSION=latest
-ARG CUDA_VERSION_FOR_COMFY
+ARG CUDA_VERSION_FOR_COMFY=12.6
 ARG ENABLE_PYTORCH_UPGRADE=false
-ARG PYTORCH_INDEX_URL
+ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu126
 
 # Prevents prompts from packages asking for user input during installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -60,6 +60,13 @@ RUN if [ -n "${CUDA_VERSION_FOR_COMFY}" ]; then \
 # Upgrade PyTorch if needed (for newer CUDA versions)
 RUN if [ "$ENABLE_PYTORCH_UPGRADE" = "true" ]; then \
       uv pip install --force-reinstall torch torchvision torchaudio --index-url ${PYTORCH_INDEX_URL}; \
+    fi
+
+# Ensure plain Docker builds, including RunPod GitHub builds that do not use
+# docker-bake.hcl, fail during build instead of producing workers without torch.
+RUN if ! python -c "import torch; assert torch.version.cuda, 'PyTorch CUDA wheel is not installed'; print(f'torch={torch.__version__}, cuda={torch.version.cuda}')"; then \
+      uv pip install --force-reinstall torch torchvision torchaudio --index-url ${PYTORCH_INDEX_URL}; \
+      python -c "import torch; assert torch.version.cuda, 'PyTorch CUDA wheel is not installed'; print(f'torch={torch.__version__}, cuda={torch.version.cuda}')"; \
     fi
 
 # Change working directory to ComfyUI
