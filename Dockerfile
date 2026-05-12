@@ -59,14 +59,14 @@ RUN if [ -n "${CUDA_VERSION_FOR_COMFY}" ]; then \
 
 # Upgrade PyTorch if needed (for newer CUDA versions)
 RUN if [ "$ENABLE_PYTORCH_UPGRADE" = "true" ]; then \
-      uv pip install --force-reinstall torch torchvision torchaudio --index-url ${PYTORCH_INDEX_URL}; \
+      /comfyui/.venv/bin/python -m pip install --force-reinstall torch torchvision torchaudio --index-url ${PYTORCH_INDEX_URL}; \
     fi
 
 # Ensure plain Docker builds, including RunPod GitHub builds that do not use
 # docker-bake.hcl, fail during build instead of producing workers without torch.
-RUN if ! python -c "import torch; assert torch.version.cuda, 'PyTorch CUDA wheel is not installed'; print(f'torch={torch.__version__}, cuda={torch.version.cuda}')"; then \
-      uv pip install --force-reinstall torch torchvision torchaudio --index-url ${PYTORCH_INDEX_URL}; \
-      python -c "import torch; assert torch.version.cuda, 'PyTorch CUDA wheel is not installed'; print(f'torch={torch.__version__}, cuda={torch.version.cuda}')"; \
+RUN if ! /comfyui/.venv/bin/python -c "import torch; assert torch.version.cuda, 'PyTorch CUDA wheel is not installed'; print(f'torch={torch.__version__}, cuda={torch.version.cuda}')"; then \
+      /comfyui/.venv/bin/python -m pip install --force-reinstall torch torchvision torchaudio --index-url ${PYTORCH_INDEX_URL}; \
+      /comfyui/.venv/bin/python -c "import torch; assert torch.version.cuda, 'PyTorch CUDA wheel is not installed'; print(f'torch={torch.__version__}, cuda={torch.version.cuda}')"; \
     fi
 
 # Change working directory to ComfyUI
@@ -75,11 +75,14 @@ WORKDIR /comfyui
 # Support for the network volume
 ADD src/extra_model_paths.yaml ./
 
+# Smoke test the import chain that ComfyUI executes before binding port 8188.
+RUN /comfyui/.venv/bin/python -c "import blake3, comfy_aimdo.control, sqlalchemy, alembic; from app.assets.seeder import asset_seeder; print('ComfyUI boot imports OK')"
+
 # Go back to the root
 WORKDIR /
 
 # Install Python runtime dependencies for the handler
-RUN uv pip install runpod requests websocket-client "SQLAlchemy>=2.0.0" alembic
+RUN uv pip install runpod requests websocket-client
 
 # Add application code and scripts
 ADD src/start.sh src/network_volume.py handler.py test_input.json ./

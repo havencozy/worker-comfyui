@@ -22,6 +22,19 @@ fi
 TCMALLOC="$(ldconfig -p | grep -Po "libtcmalloc.so.\d" | head -n 1)"
 export LD_PRELOAD="${TCMALLOC}"
 
+COMFY_PYTHON="${COMFY_PYTHON:-/comfyui/.venv/bin/python}"
+HANDLER_PYTHON="${HANDLER_PYTHON:-/opt/venv/bin/python}"
+
+if [ ! -x "$COMFY_PYTHON" ]; then
+    echo "worker-comfyui: ComfyUI Python not found or not executable: $COMFY_PYTHON" >&2
+    exit 1
+fi
+
+if [ ! -x "$HANDLER_PYTHON" ]; then
+    echo "worker-comfyui: Handler Python not found or not executable: $HANDLER_PYTHON" >&2
+    exit 1
+fi
+
 # ---------------------------------------------------------------------------
 # GPU pre-flight check
 # Verify that the GPU is accessible before starting ComfyUI. If PyTorch
@@ -29,7 +42,9 @@ export LD_PRELOAD="${TCMALLOC}"
 # so we fail fast with an actionable error message.
 # ---------------------------------------------------------------------------
 echo "worker-comfyui: Checking GPU availability..."
-if ! GPU_CHECK=$(python3 -c "
+if [ "${SKIP_GPU_CHECK:-false}" = "true" ]; then
+    echo "worker-comfyui: GPU check skipped because SKIP_GPU_CHECK=true"
+elif ! GPU_CHECK=$("$COMFY_PYTHON" -c "
 import torch
 try:
     torch.cuda.init()
@@ -44,8 +59,9 @@ except Exception as e:
     echo "worker-comfyui: This usually means the GPU on this machine is not properly initialized."
     echo "worker-comfyui: Please contact RunPod support and report this machine."
     exit 1
+else
+    echo "worker-comfyui: GPU available — $GPU_CHECK"
 fi
-echo "worker-comfyui: GPU available — $GPU_CHECK"
 
 # Ensure ComfyUI-Manager runs in offline network mode inside the container
 comfy-manager-set-mode offline || echo "worker-comfyui - Could not set ComfyUI-Manager network_mode" >&2
@@ -60,15 +76,15 @@ COMFY_PID_FILE="/tmp/comfyui.pid"
 
 # Serve the API and don't shutdown the container
 if [ "$SERVE_API_LOCALLY" == "true" ]; then
-    python -u /comfyui/main.py --disable-auto-launch --disable-metadata --listen --verbose "${COMFY_LOG_LEVEL}" --log-stdout &
+    "$COMFY_PYTHON" -u /comfyui/main.py --disable-auto-launch --disable-metadata --listen --verbose "${COMFY_LOG_LEVEL}" --log-stdout &
     echo $! > "$COMFY_PID_FILE"
 
     echo "worker-comfyui: Starting RunPod Handler"
-    python -u /handler.py --rp_serve_api --rp_api_host=0.0.0.0
+    "$HANDLER_PYTHON" -u /handler.py --rp_serve_api --rp_api_host=0.0.0.0
 else
-    python -u /comfyui/main.py --disable-auto-launch --disable-metadata --verbose "${COMFY_LOG_LEVEL}" --log-stdout &
+    "$COMFY_PYTHON" -u /comfyui/main.py --disable-auto-launch --disable-metadata --verbose "${COMFY_LOG_LEVEL}" --log-stdout &
     echo $! > "$COMFY_PID_FILE"
 
     echo "worker-comfyui: Starting RunPod Handler"
-    python -u /handler.py
+    "$HANDLER_PYTHON" -u /handler.py
 fi
