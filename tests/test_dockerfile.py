@@ -16,6 +16,11 @@ class TestDockerfileRunpodBuildDefaults(unittest.TestCase):
     def test_build_fails_if_torch_is_not_importable(self):
         self.assertIn('python -c "import torch', self.dockerfile)
 
+    def test_installs_comfyui_boot_dependencies(self):
+        dockerfile = self.dockerfile.lower()
+        self.assertIn("sqlalchemy", dockerfile)
+        self.assertIn("alembic", dockerfile)
+
 
 if __name__ == "__main__":
     unittest.main()
