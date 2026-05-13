@@ -10,7 +10,7 @@
 
 ---
 
-This project allows you to run ComfyUI workflows as a serverless API endpoint on the RunPod platform. Submit workflows via API calls and receive generated images as base64 strings or S3 URLs.
+This project runs curated ComfyUI image generation workflows as a serverless API endpoint on the RunPod platform. Submit simple `t2i` or `i2i` requests and receive generated images as base64 strings or S3 URLs.
 
 ## Table of Contents
 
@@ -18,7 +18,7 @@ This project allows you to run ComfyUI workflows as a serverless API endpoint on
 - [Available Docker Images](#available-docker-images)
 - [API Specification](#api-specification)
 - [Usage](#usage)
-- [Getting the Workflow JSON](#getting-the-workflow-json)
+- [Customizing Workflow Templates](#customizing-workflow-templates)
 - [Further Documentation](#further-documentation)
 
 ---
@@ -28,7 +28,7 @@ This project allows you to run ComfyUI workflows as a serverless API endpoint on
 1.  🐳 Choose one of the [available Docker images](#available-docker-images) for your serverless endpoint (e.g., `runpod/worker-comfyui:<version>-sd3`).
 2.  📄 Follow the [Deployment Guide](docs/deployment.md) to set up your RunPod template and endpoint.
 3.  ⚙️ Optionally configure the worker (e.g., for S3 upload) using environment variables - see the full [Configuration Guide](docs/configuration.md).
-4.  🧪 Pick an example workflow from [`test_resources/workflows/`](./test_resources/workflows/) or [get your own](#getting-the-workflow-json).
+4.  🧪 Send either a text-to-image (`t2i`) or image-to-image (`i2i`) request.
 5.  🚀 Follow the [Usage](#usage) steps below to interact with your deployed endpoint.
 
 ## Available Docker Images
@@ -38,6 +38,7 @@ These images are available on Docker Hub under `runpod/worker-comfyui`:
 - **`runpod/worker-comfyui:<version>-base`**: Clean ComfyUI install with no models.
 - **`runpod/worker-comfyui:<version>-flux1-schnell`**: Includes checkpoint, text encoders, and VAE for [FLUX.1 schnell](https://huggingface.co/black-forest-labs/FLUX.1-schnell).
 - **`runpod/worker-comfyui:<version>-flux1-dev`**: Includes checkpoint, text encoders, and VAE for [FLUX.1 dev](https://huggingface.co/black-forest-labs/FLUX.1-dev).
+- **`runpod/worker-comfyui:<version>-flux2-dev`**: Includes model files used by the built-in Flux2 `t2i` and `i2i` templates.
 - **`runpod/worker-comfyui:<version>-sdxl`**: Includes checkpoint and VAEs for [Stable Diffusion XL](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0).
 - **`runpod/worker-comfyui:<version>-sd3`**: Includes checkpoint for [Stable Diffusion 3 medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium).
 
@@ -54,36 +55,37 @@ Use the `/runsync` endpoint for synchronous requests that wait for the job to co
 ```json
 {
   "input": {
-    "workflow": {
-      "6": {
-        "inputs": {
-          "text": "a ball on the table",
-          "clip": ["30", 1]
-        },
-        "class_type": "CLIPTextEncode",
-        "_meta": {
-          "title": "CLIP Text Encode (Positive Prompt)"
-        }
-      }
-    },
-    "images": [
-      {
-        "name": "input_image_1.png",
-        "image": "data:image/png;base64,iVBOR..."
-      }
-    ]
+    "mode": "t2i",
+    "prompt": "a ball on the table",
+    "aspect_ratio": "1:1",
+    "count": 1,
+    "options": {
+      "steps": 20,
+      "cfg": 4,
+      "seed": 123456,
+      "sampler_name": "euler"
+    }
   }
 }
 ```
 
 The following tables describe the fields within the `input` object:
 
-| Field Path                | Type   | Required | Description                                                                                                                                |
-| ------------------------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `input`                   | Object | Yes      | Top-level object containing request data.                                                                                                  |
-| `input.workflow`          | Object | Yes      | The ComfyUI workflow exported in the [required format](#getting-the-workflow-json).                                                        |
-| `input.images`            | Array  | No       | Optional array of input images. Each image is uploaded to ComfyUI's `input` directory and can be referenced by its `name` in the workflow. |
-| `input.comfy_org_api_key` | String | No       | Optional per-request Comfy.org API key for API Nodes. Overrides the `COMFY_ORG_API_KEY` environment variable if both are set.              |
+| Field Path                | Type    | Required | Description                                                                                                                   |
+| ------------------------- | ------- | -------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `input`                   | Object  | Yes      | Top-level object containing request data.                                                                                     |
+| `input.mode`              | String  | Yes      | Generation mode. Supported values are `t2i` and `i2i`.                                                                        |
+| `input.prompt`            | String  | Yes      | Positive prompt injected into the built-in workflow template.                                                                 |
+| `input.negative_prompt`   | String  | No       | Negative prompt, used only when the selected workflow has a negative prompt node.                                              |
+| `input.aspect_ratio`      | String  | No       | Preset size for `t2i`, or explicit resize for `i2i`. Supported values: `1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `3:2`, `2:3`.    |
+| `input.width`             | Integer | No       | Explicit output width. Must be paired with `input.height`. Overrides `aspect_ratio`.                                           |
+| `input.height`            | Integer | No       | Explicit output height. Must be paired with `input.width`. Overrides `aspect_ratio`.                                          |
+| `input.count`             | Integer | No       | Batch size. Defaults to `1`.                                                                                                  |
+| `input.image`             | String  | i2i only | Base64 input image for `i2i`. A data URI prefix is optional.                                                                  |
+| `input.image_name`        | String  | No       | Filename used when uploading `input.image` to ComfyUI. Defaults to `input_image.png`.                                         |
+| `input.images`            | Array   | No       | Legacy-compatible image upload array for `i2i`. If supplied, the first image is wired into the built-in Load Image node.      |
+| `input.options`           | Object  | No       | Optional sampler fields: `steps`, `seed`, `cfg`, `denoise`, and `sampler_name`.                                                |
+| `input.comfy_org_api_key` | String  | No       | Optional per-request Comfy.org API key for API Nodes. Overrides the `COMFY_ORG_API_KEY` environment variable if both are set. |
 
 #### `input.images` Object
 
@@ -157,27 +159,43 @@ To interact with your deployed RunPod endpoint:
 
 ### Generate Image (Sync Example)
 
-Send a workflow to the `/runsync` endpoint (waits for completion). Replace `<api_key>` and `<endpoint_id>`. The `-d` value should contain the [JSON input described above](#input).
+Send a generation request to the `/runsync` endpoint (waits for completion). Replace `<api_key>` and `<endpoint_id>`. The `-d` value should contain the [JSON input described above](#input).
 
 ```bash
 curl -X POST \
   -H "Authorization: Bearer <api_key>" \
   -H "Content-Type: application/json" \
-  -d '{"input":{"workflow":{... your workflow JSON ...}}}' \
+  -d '{"input":{"mode":"t2i","prompt":"a ball on the table","aspect_ratio":"1:1"}}' \
   https://api.runpod.ai/v2/<endpoint_id>/runsync
+```
+
+For image-to-image, send `mode: "i2i"` and include either `image` plus optional `image_name`, or the legacy `images` array:
+
+```json
+{
+  "input": {
+    "mode": "i2i",
+    "prompt": "preserve identity, cinematic color grading",
+    "image": "data:image/png;base64,iVBOR...",
+    "image_name": "input_image.png"
+  }
+}
 ```
 
 You can also use the `/run` endpoint for asynchronous jobs and then poll the `/status` to see when the job is done. Or you [add a `webhook` into your request](https://docs.runpod.io/serverless/endpoints/send-requests#webhook-notifications) to be notified when the job is done.
 
 Refer to [`test_input.json`](./test_input.json) for a complete input example.
 
-## Getting the Workflow JSON
+## Customizing Workflow Templates
 
-To get the correct `workflow` JSON for the API:
+The public API no longer accepts a raw `input.workflow` payload. The worker loads built-in templates from [`workflows/`](./workflows/) and injects request fields into those templates.
+
+To replace a built-in template:
 
 1.  Open ComfyUI in your browser.
 2.  In the top navigation, select `Workflow > Export (API)`
-3.  A `workflow.json` file will be downloaded. Use the content of this file as the value for the `input.workflow` field in your API requests.
+3.  Save the exported JSON over `workflows/flux2_t2i.json` or `workflows/flux2_i2i.json`.
+4.  Rebuild the Docker image.
 
 ## SSH Access
 

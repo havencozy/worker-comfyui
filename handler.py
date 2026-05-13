@@ -14,6 +14,7 @@ import tempfile
 import socket
 import traceback
 import logging
+import copy
 
 from network_volume import (
     is_network_volume_debug_enabled,
@@ -58,6 +59,43 @@ COMFY_HOST = "127.0.0.1:8188"
 # Enforce a clean state after each job is done
 # see https://docs.runpod.io/docs/handler-additional-controls#refresh-worker
 REFRESH_WORKER = os.environ.get("REFRESH_WORKER", "false").lower() == "true"
+
+WORKFLOW_DIR = os.environ.get(
+    "WORKFLOW_DIR", os.path.join(os.path.dirname(__file__), "workflows")
+)
+
+# Built-in custom API workflow templates (override via env if needed)
+FLUX2_T2I_WORKFLOW_PATH = os.environ.get(
+    "FLUX2_T2I_WORKFLOW_PATH", os.path.join(WORKFLOW_DIR, "flux2_t2i.json")
+)
+FLUX2_I2I_WORKFLOW_PATH = os.environ.get(
+    "FLUX2_I2I_WORKFLOW_PATH", os.path.join(WORKFLOW_DIR, "flux2_i2i.json")
+)
+
+ASPECT_RATIO_PRESETS = {
+    "1:1": (1024, 1024),
+    "16:9": (1344, 768),
+    "9:16": (768, 1344),
+    "4:3": (1152, 896),
+    "3:4": (896, 1152),
+    "3:2": (1216, 832),
+    "2:3": (832, 1216),
+}
+
+# Presets for quickly switching Flux model assets without changing workflow files.
+# You can override/extend this map via FLUX_MODEL_PRESETS_JSON env var.
+DEFAULT_FLUX_MODEL_PRESETS = {
+    "flux2-dev": {
+        "unet_name": "flux2_dev_fp8mixed.safetensors",
+        "clip_name": "mistral_3_small_flux2_bf16.safetensors",
+        "vae_name": "flux2-vae.safetensors",
+    },
+    "flux2-schnell": {
+        "unet_name": "flux2_schnell_fp8mixed.safetensors",
+        "clip_name": "mistral_3_small_flux2_bf16.safetensors",
+        "vae_name": "flux2-vae.safetensors",
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Helper: quick reachability probe of ComfyUI HTTP endpoint (port 8188)
@@ -169,30 +207,207 @@ def validate_input(job_input):
         except json.JSONDecodeError:
             return None, "Invalid JSON format in input"
 
-    # Validate 'workflow' in input
-    workflow = job_input.get("workflow")
-    if workflow is None:
-        return None, "Missing 'workflow' parameter"
+    # Custom API mode: mode-based payload (t2i / i2i)
+    mode = job_input.get("mode")
+    if mode in ["t2i", "i2i"]:
+        return _build_custom_mode_input(job_input, mode)
 
-    # Validate 'images' in input, if provided
-    images = job_input.get("images")
-    if images is not None:
-        if not isinstance(images, list) or not all(
-            "name" in image and "image" in image for image in images
-        ):
-            return (
-                None,
-                "'images' must be a list of objects with 'name' and 'image' keys",
-            )
+    return None, "Missing or invalid 'mode'. Supported values: 't2i', 'i2i'"
 
-    # Optional: API key for Comfy.org API Nodes, passed per-request
-    comfy_org_api_key = job_input.get("comfy_org_api_key")
 
-    # Return validated data and no error
+def _load_workflow_template(path):
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    # Accept either raw workflow or wrapped {"input":{"workflow":...}}
+    if isinstance(data, dict) and "input" in data and "workflow" in data["input"]:
+        return copy.deepcopy(data["input"]["workflow"])
+
+    return copy.deepcopy(data)
+
+
+def _resolve_dimensions(
+    aspect_ratio, width, height, default_width=1024, default_height=1024
+):
+    if width and height:
+        return int(width), int(height)
+
+    if aspect_ratio:
+        preset = ASPECT_RATIO_PRESETS.get(str(aspect_ratio).strip())
+        if preset:
+            return preset
+
+    return default_width, default_height
+
+
+def _set_prompt_fields(workflow, prompt=None, negative_prompt=None):
+    for node in workflow.values():
+        inputs = node.get("inputs", {})
+        class_type = node.get("class_type", "")
+        title = ((node.get("_meta") or {}).get("title", "")).lower()
+
+        if class_type == "CLIPTextEncode" and "text" in inputs:
+            if "negative" in title and negative_prompt is not None:
+                inputs["text"] = negative_prompt
+            elif "positive" in title and prompt is not None:
+                inputs["text"] = prompt
+            elif prompt is not None and "negative" not in title:
+                # Fallback for single prompt encoder graphs
+                inputs["text"] = prompt
+
+
+def _set_numeric_fields(workflow, width, height, count, options):
+    for node in workflow.values():
+        inputs = node.get("inputs", {})
+        class_type = node.get("class_type", "")
+
+        if width is not None and "width" in inputs:
+            inputs["width"] = int(width)
+        if height is not None and "height" in inputs:
+            inputs["height"] = int(height)
+        if count is not None and "batch_size" in inputs:
+            inputs["batch_size"] = int(count)
+
+        if "steps" in options and "steps" in inputs:
+            inputs["steps"] = int(options["steps"])
+
+        if "seed" in options:
+            if "noise_seed" in inputs:
+                inputs["noise_seed"] = int(options["seed"])
+            if "seed" in inputs:
+                inputs["seed"] = int(options["seed"])
+
+        if "cfg" in options:
+            if "cfg" in inputs:
+                inputs["cfg"] = float(options["cfg"])
+            if class_type == "FluxGuidance" and "guidance" in inputs:
+                inputs["guidance"] = float(options["cfg"])
+
+        if "denoise" in options and "denoise" in inputs:
+            inputs["denoise"] = float(options["denoise"])
+
+        if "sampler_name" in options and "sampler_name" in inputs:
+            inputs["sampler_name"] = options["sampler_name"]
+
+
+def _set_i2i_image_fields(workflow, image_name):
+    for node in workflow.values():
+        inputs = node.get("inputs", {})
+        class_type = node.get("class_type", "")
+        if class_type == "LoadImage" and "image" in inputs:
+            inputs["image"] = image_name
+
+
+def _load_model_presets():
+    raw = os.environ.get("FLUX_MODEL_PRESETS_JSON")
+    if not raw:
+        return DEFAULT_FLUX_MODEL_PRESETS
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+    return DEFAULT_FLUX_MODEL_PRESETS
+
+
+def _apply_model_preset(workflow, model_name):
+    presets = _load_model_presets()
+    preset = presets.get(model_name)
+    if not preset:
+        return False, f"Unsupported model '{model_name}'. Available: {', '.join(presets.keys())}"
+
+    for node in workflow.values():
+        class_type = node.get("class_type", "")
+        inputs = node.get("inputs", {})
+
+        if class_type == "UNETLoader" and preset.get("unet_name"):
+            inputs["unet_name"] = preset["unet_name"]
+        elif class_type == "CLIPLoader" and preset.get("clip_name"):
+            inputs["clip_name"] = preset["clip_name"]
+        elif class_type == "VAELoader" and preset.get("vae_name"):
+            inputs["vae_name"] = preset["vae_name"]
+
+    return True, None
+
+
+def _build_custom_mode_input(job_input, mode):
+    workflow_path = (
+        FLUX2_T2I_WORKFLOW_PATH if mode == "t2i" else FLUX2_I2I_WORKFLOW_PATH
+    )
+
+    try:
+        workflow = _load_workflow_template(workflow_path)
+    except Exception as e:
+        return None, f"Unable to load workflow template ({workflow_path}): {e}"
+
+    prompt = job_input.get("prompt")
+    if not prompt:
+        return None, "Missing 'prompt' parameter"
+
+    options = job_input.get("options") or {}
+    if not isinstance(options, dict):
+        return None, "'options' must be an object"
+
+    count = job_input.get("count", 1)
+    try:
+        count = int(count)
+    except Exception:
+        return None, "'count' must be an integer"
+    if count < 1:
+        return None, "'count' must be >= 1"
+
+    default_width = None if mode == "i2i" else 1024
+    default_height = None if mode == "i2i" else 1024
+    width, height = _resolve_dimensions(
+        job_input.get("aspect_ratio"),
+        job_input.get("width"),
+        job_input.get("height"),
+        default_width=default_width,
+        default_height=default_height,
+    )
+
+    _set_prompt_fields(
+        workflow,
+        prompt=prompt,
+        negative_prompt=job_input.get("negative_prompt"),
+    )
+
+    model_name = options.get("model") or job_input.get("model")
+    if model_name:
+        ok, model_error = _apply_model_preset(workflow, model_name)
+        if not ok:
+            return None, model_error
+
+    _set_numeric_fields(workflow, width, height, count, options)
+
+    images = None
+    if mode == "i2i":
+        image_value = job_input.get("image")
+        image_name = job_input.get("image_name", "input_image.png")
+
+        # Allow either `image` or existing `images` format
+        if image_value:
+            images = [{"name": image_name, "image": image_value}]
+        elif job_input.get("images"):
+            images = job_input.get("images")
+            if not isinstance(images, list) or not all(
+                "name" in img and "image" in img for img in images
+            ):
+                return (
+                    None,
+                    "'images' must be a list of objects with 'name' and 'image' keys",
+                )
+            image_name = images[0]["name"]
+        else:
+            return None, "Missing 'image' (or 'images') parameter for i2i mode"
+
+        _set_i2i_image_fields(workflow, image_name)
+
     return {
         "workflow": workflow,
         "images": images,
-        "comfy_org_api_key": comfy_org_api_key,
+        "comfy_org_api_key": job_input.get("comfy_org_api_key"),
     }, None
 
 
