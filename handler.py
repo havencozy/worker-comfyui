@@ -97,6 +97,25 @@ DEFAULT_FLUX_MODEL_PRESETS = {
     },
 }
 
+# Runtime download manifest (used by API call preflight: check model -> download if missing)
+# Extend/override with FLUX_MODEL_ASSETS_JSON env.
+DEFAULT_FLUX_MODEL_ASSETS = {
+    "flux2-dev": [
+        {
+            "path": "models/text_encoders/mistral_3_small_flux2_bf16.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/text_encoders/mistral_3_small_flux2_bf16.safetensors",
+        },
+        {
+            "path": "models/diffusion_models/flux2_dev_fp8mixed.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/diffusion_models/flux2_dev_fp8mixed.safetensors",
+        },
+        {
+            "path": "models/vae/flux2-vae.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors",
+        },
+    ]
+}
+
 # ---------------------------------------------------------------------------
 # Helper: quick reachability probe of ComfyUI HTTP endpoint (port 8188)
 # ---------------------------------------------------------------------------
@@ -311,6 +330,68 @@ def _load_model_presets():
     return DEFAULT_FLUX_MODEL_PRESETS
 
 
+def _load_model_assets():
+    raw = os.environ.get("FLUX_MODEL_ASSETS_JSON")
+    if not raw:
+        return DEFAULT_FLUX_MODEL_ASSETS
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+    return DEFAULT_FLUX_MODEL_ASSETS
+
+
+def _download_file(url, destination, hf_token=None):
+    os.makedirs(os.path.dirname(destination), exist_ok=True)
+
+    headers = {}
+    if hf_token:
+        headers["Authorization"] = f"Bearer {hf_token}"
+
+    request = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(request, timeout=600) as response:
+        with open(destination, "wb") as out_file:
+            out_file.write(response.read())
+
+
+def _ensure_model_assets(model_name):
+    assets_by_model = _load_model_assets()
+    assets = assets_by_model.get(model_name)
+    if not assets:
+        return False, (
+            f"No runtime asset manifest found for model '{model_name}'. "
+            "Set FLUX_MODEL_ASSETS_JSON to configure download paths/urls."
+        )
+
+    comfy_root = os.environ.get("COMFY_ROOT", "/comfyui")
+    hf_token = os.environ.get("HUGGINGFACE_ACCESS_TOKEN") or os.environ.get(
+        "HF_TOKEN"
+    )
+
+    for asset in assets:
+        rel_path = asset.get("path")
+        url = asset.get("url")
+        if not rel_path or not url:
+            return False, f"Invalid asset entry for model '{model_name}': {asset}"
+
+        local_path = os.path.join(comfy_root, rel_path)
+        if os.path.exists(local_path):
+            continue
+
+        print(
+            f"worker-comfyui - Model asset missing for {model_name}, downloading: {rel_path}"
+        )
+        try:
+            _download_file(url, local_path, hf_token=hf_token)
+            print(f"worker-comfyui - Downloaded: {rel_path}")
+        except Exception as e:
+            return False, f"Failed downloading {rel_path}: {e}"
+
+    return True, None
+
+
 def _apply_model_preset(workflow, model_name):
     presets = _load_model_presets()
     preset = presets.get(model_name)
@@ -408,6 +489,7 @@ def _build_custom_mode_input(job_input, mode):
         "workflow": workflow,
         "images": images,
         "comfy_org_api_key": job_input.get("comfy_org_api_key"),
+        "selected_model": model_name,
     }, None
 
 
@@ -811,6 +893,13 @@ def handler(job):
     # Extract validated data
     workflow = validated_data["workflow"]
     input_images = validated_data.get("images")
+    selected_model = validated_data.get("selected_model")
+
+    # For custom API: verify model assets are present, download once if missing
+    if selected_model:
+        ok, model_error = _ensure_model_assets(selected_model)
+        if not ok:
+            return {"error": model_error}
 
     # Make sure that the ComfyUI HTTP API is available before proceeding
     if not check_server(
