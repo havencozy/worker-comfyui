@@ -64,6 +64,48 @@ WORKFLOW_DIR = os.environ.get(
     "WORKFLOW_DIR", os.path.join(os.path.dirname(__file__), "workflows")
 )
 
+WAN22_MODEL_NAME = "wan2.2-14b"
+VIDEO_MODES = {"t2v", "i2v", "r2v"}
+RESOLUTION_PRESETS = {"480p": 480, "720p": 720, "1080p": 1080}
+VIDEO_ASPECT_RATIOS = {
+    "21:9": (21, 9),
+    "16:9": (16, 9),
+    "4:3": (4, 3),
+    "1:1": (1, 1),
+    "3:4": (3, 4),
+    "9:16": (9, 16),
+}
+DEFAULT_NEGATIVE_PROMPT = ""
+DEFAULT_VIDEO_OPTIONS = {
+    "fps": 24,
+    "steps": 30,
+    "guidance_scale": 7.5,
+    "motion_strength": 0.5,
+    "strength": 0.6,
+}
+
+
+def _refresh_runtime_config():
+    global WAN22_T2V_WORKFLOW_PATH
+    global WAN22_I2V_WORKFLOW_PATH
+    global WAN22_R2V_WORKFLOW_PATH
+
+    WAN22_T2V_WORKFLOW_PATH = os.environ.get(
+        "WAN22_T2V_WORKFLOW_PATH",
+        os.path.join(WORKFLOW_DIR, "wan2_2_14b_t2v.json"),
+    )
+    WAN22_I2V_WORKFLOW_PATH = os.environ.get(
+        "WAN22_I2V_WORKFLOW_PATH",
+        os.path.join(WORKFLOW_DIR, "wan2_2_14b_i2v.json"),
+    )
+    WAN22_R2V_WORKFLOW_PATH = os.environ.get(
+        "WAN22_R2V_WORKFLOW_PATH",
+        os.path.join(WORKFLOW_DIR, "wan2_2_14b_flf2v.json"),
+    )
+
+
+_refresh_runtime_config()
+
 # Built-in custom API workflow templates (override via env if needed)
 FLUX2_T2I_WORKFLOW_PATH = os.environ.get(
     "FLUX2_T2I_WORKFLOW_PATH", os.path.join(WORKFLOW_DIR, "flux2_t2i.json")
@@ -217,21 +259,32 @@ def validate_input(job_input):
     """
     # Validate if job_input is provided
     if job_input is None:
-        return None, "Please provide input"
+        return None, _error("VALIDATION_ERROR", "Please provide input")
 
     # Check if input is a string and try to parse it as JSON
     if isinstance(job_input, str):
         try:
             job_input = json.loads(job_input)
         except json.JSONDecodeError:
-            return None, "Invalid JSON format in input"
+            return None, _error("VALIDATION_ERROR", "Invalid JSON format in input")
 
-    # Custom API mode: mode-based payload (t2i / i2i)
+    if not isinstance(job_input, dict):
+        return None, _error("VALIDATION_ERROR", "Input must be an object")
+
     mode = job_input.get("mode")
-    if mode in ["t2i", "i2i"]:
-        return _build_custom_mode_input(job_input, mode)
+    if mode in VIDEO_MODES:
+        return _build_video_mode_input(job_input, mode)
 
-    return None, "Missing or invalid 'mode'. Supported values: 't2i', 'i2i'"
+    if mode in {"t2i", "i2i"}:
+        return None, _error(
+            "UNSUPPORTED_MODE",
+            "This deployment supports video modes only: 't2v', 'i2v', 'r2v'",
+        )
+
+    return None, _error(
+        "UNSUPPORTED_MODE",
+        "Missing or invalid 'mode'. Supported values: 't2v', 'i2v', 'r2v'",
+    )
 
 
 def _load_workflow_template(path):
@@ -243,6 +296,341 @@ def _load_workflow_template(path):
         return copy.deepcopy(data["input"]["workflow"])
 
     return copy.deepcopy(data)
+
+
+def _error(code, message):
+    return {"code": code, "message": message}
+
+
+def _round_to_multiple(value, multiple=16):
+    return int(round(value / multiple) * multiple)
+
+
+def _resolve_video_dimensions(resolution="720p", aspect_ratio="auto"):
+    resolution = resolution or "720p"
+    aspect_ratio = "16:9" if aspect_ratio in (None, "auto") else str(aspect_ratio)
+
+    if resolution not in RESOLUTION_PRESETS:
+        raise ValueError("'resolution' must be one of: 480p, 720p, 1080p")
+    if aspect_ratio not in VIDEO_ASPECT_RATIOS:
+        raise ValueError(
+            "'aspect_ratio' must be one of: auto, 21:9, 16:9, 4:3, 1:1, 3:4, 9:16"
+        )
+
+    target = RESOLUTION_PRESETS[resolution]
+    ratio_w, ratio_h = VIDEO_ASPECT_RATIOS[aspect_ratio]
+
+    if ratio_w > ratio_h:
+        height = target
+        width = _round_to_multiple(target * ratio_w / ratio_h)
+    elif ratio_h > ratio_w:
+        width = target
+        height = _round_to_multiple(target * ratio_h / ratio_w)
+    else:
+        width = target
+        height = target
+
+    return width, height
+
+
+def _resolve_duration_sec(duration):
+    if duration in (None, "auto"):
+        return 5
+    try:
+        duration_sec = int(duration)
+    except (TypeError, ValueError):
+        raise ValueError("'duration' must be 'auto' or an integer from 4 to 15")
+    if duration_sec < 4 or duration_sec > 15:
+        raise ValueError("'duration' must be between 4 and 15 seconds")
+    return duration_sec
+
+
+def _resolve_num_frames(duration_sec, fps):
+    return int(duration_sec) * int(fps)
+
+
+def _require_prompt(job_input):
+    prompt = job_input.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise ValueError("Missing 'prompt' parameter")
+    return prompt
+
+
+def _normalize_video_options(job_input):
+    options = dict(DEFAULT_VIDEO_OPTIONS)
+    raw_options = job_input.get("options") or {}
+    if not isinstance(raw_options, dict):
+        raise ValueError("'options' must be an object")
+    options.update(raw_options)
+
+    fps = int(options["fps"])
+    steps = int(options["steps"])
+    guidance_scale = float(options["guidance_scale"])
+    motion_strength = float(options["motion_strength"])
+    strength = float(options["strength"])
+
+    if fps < 8 or fps > 30:
+        raise ValueError("'options.fps' must be between 8 and 30")
+    if steps < 10 or steps > 80:
+        raise ValueError("'options.steps' must be between 10 and 80")
+    if guidance_scale < 1 or guidance_scale > 20:
+        raise ValueError("'options.guidance_scale' must be between 1 and 20")
+    if motion_strength < 0 or motion_strength > 1:
+        raise ValueError("'options.motion_strength' must be between 0 and 1")
+    if strength < 0 or strength > 1:
+        raise ValueError("'options.strength' must be between 0 and 1")
+
+    return {
+        "fps": fps,
+        "steps": steps,
+        "guidance_scale": guidance_scale,
+        "motion_strength": motion_strength,
+        "strength": strength,
+    }
+
+
+def _normalize_seed(job_input):
+    if job_input.get("seed") is None:
+        return int(time.time_ns() % 2147483647)
+    seed = int(job_input["seed"])
+    if seed < 0 or seed > 2147483647:
+        raise ValueError("'seed' must be between 0 and 2147483647")
+    return seed
+
+
+def _validate_video_request(job_input, mode):
+    prompt = _require_prompt(job_input)
+    options = _normalize_video_options(job_input)
+    width, height = _resolve_video_dimensions(
+        job_input.get("resolution", "720p"),
+        job_input.get("aspect_ratio", "auto"),
+    )
+    duration_sec = _resolve_duration_sec(job_input.get("duration", "auto"))
+    num_frames = _resolve_num_frames(duration_sec, options["fps"])
+    seed = _normalize_seed(job_input)
+
+    warnings = []
+    if bool(job_input.get("generate_audio", False)):
+        warnings.append("AUDIO_NOT_SUPPORTED_BY_WORKFLOW")
+
+    return {
+        "mode": mode,
+        "prompt": prompt,
+        "negative_prompt": job_input.get("negative_prompt", DEFAULT_NEGATIVE_PROMPT),
+        "width": width,
+        "height": height,
+        "duration_sec": duration_sec,
+        "num_frames": num_frames,
+        "seed": seed,
+        "options": options,
+        "warnings": warnings,
+    }
+
+
+def _video_workflow_path(mode):
+    if mode == "t2v":
+        return WAN22_T2V_WORKFLOW_PATH
+    if mode == "i2v":
+        return WAN22_I2V_WORKFLOW_PATH
+    if mode == "r2v":
+        return WAN22_R2V_WORKFLOW_PATH
+    raise ValueError(f"Unsupported video mode '{mode}'")
+
+
+def _extract_placeholders(prompt, prefix):
+    markers = []
+    search = f"@{prefix}"
+    start = 0
+    while True:
+        idx = prompt.find(search, start)
+        if idx == -1:
+            break
+        pos = idx + len(search)
+        digits = []
+        while pos < len(prompt) and prompt[pos].isdigit():
+            digits.append(prompt[pos])
+            pos += 1
+        if digits:
+            markers.append(int("".join(digits)))
+        start = pos
+    return markers
+
+
+def _validate_reference_placeholders(job_input, prompt):
+    image_urls = job_input.get("image_urls") or []
+    if image_urls and not isinstance(image_urls, list):
+        raise ValueError("'image_urls' must be an array")
+    for marker in _extract_placeholders(prompt, "Image"):
+        if marker < 1 or marker > len(image_urls):
+            raise ValueError(
+                f"Prompt references @Image{marker}, but image_urls[{marker - 1}] is missing"
+            )
+
+    for marker in _extract_placeholders(prompt, "Video"):
+        raise RuntimeError(
+            f"@Video{marker} references are not supported by this Wan2.2 FLF2V deployment"
+        )
+
+    for marker in _extract_placeholders(prompt, "Audio"):
+        raise RuntimeError(
+            f"@Audio{marker} references are not supported by this Wan2.2 FLF2V deployment"
+        )
+
+
+def _frame_assets_for_mode(job_input, mode, prompt):
+    _validate_reference_placeholders(job_input, prompt)
+
+    if mode == "t2v":
+        warnings = []
+        for field in ("start_frame", "end_frame", "image_urls", "video_urls", "audio_urls"):
+            if job_input.get(field):
+                warnings.append(f"{field.upper()}_IGNORED_BY_T2V")
+        return [], [], warnings
+
+    if mode == "i2v":
+        start_frame = job_input.get("start_frame")
+        if not start_frame:
+            raise ValueError("Missing 'start_frame' parameter for i2v mode")
+        warnings = []
+        if job_input.get("end_frame"):
+            warnings.append("END_FRAME_IGNORED_BY_I2V")
+        return [{"name": "start_frame.png", "image": start_frame}], [], warnings
+
+    start_frame = job_input.get("start_frame")
+    end_frame = job_input.get("end_frame")
+    if start_frame and end_frame:
+        return [
+            {"name": "start_frame.png", "image": start_frame},
+            {"name": "end_frame.png", "image": end_frame},
+        ], [], []
+
+    image_urls = job_input.get("image_urls") or []
+    if len(image_urls) >= 2:
+        return [], [
+            {"name": "start_frame.png", "url": image_urls[0]},
+            {"name": "end_frame.png", "url": image_urls[1]},
+        ], []
+
+    raise ValueError(
+        "r2v mode requires two frame references via start_frame/end_frame or image_urls[0]/image_urls[1]"
+    )
+
+
+def _set_video_dimensions_and_length(workflow, width, height, num_frames):
+    for node in workflow.values():
+        inputs = node.get("inputs", {})
+        class_type = node.get("class_type", "")
+        if class_type in {
+            "EmptyHunyuanLatentVideo",
+            "Wan22ImageToVideoLatent",
+            "WanFirstLastFrameToVideo",
+        }:
+            if "width" in inputs:
+                inputs["width"] = int(width)
+            if "height" in inputs:
+                inputs["height"] = int(height)
+            if "length" in inputs:
+                inputs["length"] = int(num_frames)
+            if "batch_size" in inputs:
+                inputs["batch_size"] = 1
+
+
+def _set_video_sampler_fields(workflow, seed, options):
+    for node in workflow.values():
+        inputs = node.get("inputs", {})
+        class_type = node.get("class_type", "")
+        if class_type in {"KSampler", "KSamplerAdvanced"}:
+            if "seed" in inputs:
+                inputs["seed"] = int(seed)
+            if "noise_seed" in inputs:
+                inputs["noise_seed"] = int(seed)
+            if "steps" in inputs:
+                inputs["steps"] = int(options["steps"])
+            if "cfg" in inputs:
+                inputs["cfg"] = float(options["guidance_scale"])
+
+
+def _set_video_save_fields(workflow, mode, fps):
+    for node in workflow.values():
+        inputs = node.get("inputs", {})
+        class_type = node.get("class_type", "")
+        if class_type == "SaveVideo":
+            if "filename_prefix" in inputs:
+                inputs["filename_prefix"] = f"video/wan22_{mode}"
+            if "fps" in inputs:
+                inputs["fps"] = int(fps)
+
+
+def _set_video_load_image_fields(workflow, mode):
+    load_images = [
+        (node_id, node)
+        for node_id, node in workflow.items()
+        if node.get("class_type") == "LoadImage"
+    ]
+    if mode == "i2v" and load_images:
+        load_images[0][1].setdefault("inputs", {})["image"] = "start_frame.png"
+        return
+    if mode == "r2v":
+        for node_id, node in load_images:
+            title = ((node.get("_meta") or {}).get("title", "")).lower()
+            if "end" in title or "last" in title:
+                node.setdefault("inputs", {})["image"] = "end_frame.png"
+            else:
+                node.setdefault("inputs", {})["image"] = "start_frame.png"
+
+
+def _build_video_mode_input(job_input, mode):
+    try:
+        normalized = _validate_video_request(job_input, mode)
+        images, remote_images, asset_warnings = _frame_assets_for_mode(
+            job_input, mode, normalized["prompt"]
+        )
+        workflow = _load_workflow_template(_video_workflow_path(mode))
+
+        _set_prompt_fields(
+            workflow,
+            prompt=normalized["prompt"],
+            negative_prompt=normalized["negative_prompt"],
+        )
+        _set_video_dimensions_and_length(
+            workflow,
+            normalized["width"],
+            normalized["height"],
+            normalized["num_frames"],
+        )
+        _set_video_sampler_fields(
+            workflow,
+            normalized["seed"],
+            normalized["options"],
+        )
+        _set_video_save_fields(workflow, mode, normalized["options"]["fps"])
+        _set_video_load_image_fields(workflow, mode)
+
+        warnings = normalized["warnings"] + asset_warnings
+        meta = {
+            "mode": mode,
+            "model": WAN22_MODEL_NAME,
+            "seed": normalized["seed"],
+            "fps": normalized["options"]["fps"],
+            "duration_sec": normalized["duration_sec"],
+            "num_frames": normalized["num_frames"],
+            "width": normalized["width"],
+            "height": normalized["height"],
+            "warnings": warnings,
+        }
+
+        return {
+            "workflow": workflow,
+            "images": images,
+            "remote_images": remote_images,
+            "meta": meta,
+        }, None
+    except RuntimeError as exc:
+        return None, _error("UNSUPPORTED_REFERENCE_COMBINATION", str(exc))
+    except ValueError as exc:
+        return None, _error("VALIDATION_ERROR", str(exc))
+    except Exception as exc:
+        return None, _error("VALIDATION_ERROR", str(exc))
 
 
 def _resolve_dimensions(

@@ -289,13 +289,15 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         validated_data, error = handler.validate_input("invalid json")
 
         self.assertIsNone(validated_data)
-        self.assertEqual(error, "Invalid JSON format in input")
+        self.assertEqual(error["code"], "VALIDATION_ERROR")
+        self.assertEqual(error["message"], "Invalid JSON format in input")
 
     def test_empty_input(self):
         validated_data, error = handler.validate_input(None)
 
         self.assertIsNone(validated_data)
-        self.assertEqual(error, "Please provide input")
+        self.assertEqual(error["code"], "VALIDATION_ERROR")
+        self.assertEqual(error["message"], "Please provide input")
 
     @patch("handler.requests.get")
     def test_check_server_server_up(self, mock_get):
