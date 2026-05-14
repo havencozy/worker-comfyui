@@ -1,6 +1,94 @@
 # API Testing Guide
 
+> Wan2.2 video quick curls are documented below. Set `RUNPOD_API_KEY` and `ENDPOINT_ID`, then use `/runsync` for blocking tests or `/run` plus `/status/<job_id>` for async tests.
+
 This worker exposes RunPod serverless endpoints and accepts a simplified custom input payload. Clients do not send raw ComfyUI workflow JSON anymore.
+
+## Wan2.2 Video Curl Examples
+
+Set these variables before running the examples:
+
+```bash
+export RUNPOD_API_KEY="<runpod_api_key>"
+export ENDPOINT_ID="<endpoint_id>"
+```
+
+Wan2.2 video outputs are uploaded to S3-compatible storage and returned as `s3_url` artifacts. Configure `BUCKET_ENDPOINT_URL`, `BUCKET_ACCESS_KEY_ID`, and `BUCKET_SECRET_ACCESS_KEY` before running production video tests.
+
+Text-to-video sync test:
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer ${RUNPOD_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"input":{"mode":"t2v","prompt":"A cinematic shot of a red aircraft crossing a stormy sky","resolution":"720p","aspect_ratio":"16:9","duration":"auto","generate_audio":false}}' \
+  "https://api.runpod.ai/v2/${ENDPOINT_ID}/runsync"
+```
+
+Text-to-video async test:
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer ${RUNPOD_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"input":{"mode":"t2v","prompt":"A slow dolly shot through a neon city street at night","resolution":"480p","aspect_ratio":"16:9","duration":4,"options":{"fps":16,"steps":20}}}' \
+  "https://api.runpod.ai/v2/${ENDPOINT_ID}/run"
+```
+
+Check async job status:
+
+```bash
+curl -X GET \
+  -H "Authorization: Bearer ${RUNPOD_API_KEY}" \
+  "https://api.runpod.ai/v2/${ENDPOINT_ID}/status/<job_id>"
+```
+
+Image-to-video sync test with inline frame:
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer ${RUNPOD_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"input":{"mode":"i2v","prompt":"Preserve the subject identity, add subtle cinematic camera motion","start_frame":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...","resolution":"720p","aspect_ratio":"16:9","duration":4,"options":{"fps":24,"steps":30,"motion_strength":0.45,"strength":0.6}}}' \
+  "https://api.runpod.ai/v2/${ENDPOINT_ID}/runsync"
+```
+
+Reference-to-video sync test with first and last frame URLs:
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer ${RUNPOD_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"input":{"mode":"r2v","prompt":"Animate smoothly from the first frame to the last frame with natural motion","image_urls":["https://example.com/start.png","https://example.com/end.png"],"resolution":"720p","aspect_ratio":"16:9","duration":5,"options":{"fps":24,"steps":30,"motion_strength":0.5}}}' \
+  "https://api.runpod.ai/v2/${ENDPOINT_ID}/runsync"
+```
+
+Expected successful video output shape:
+
+```json
+{
+  "id": "sync-...",
+  "status": "COMPLETED",
+  "output": {
+    "videos": [
+      {
+        "filename": "WanVideo_00001.mp4",
+        "type": "s3_url",
+        "data": "https://..."
+      }
+    ],
+    "meta": {
+      "mode": "t2v",
+      "model": "wan2.2-14b",
+      "fps": 24,
+      "duration_sec": 5,
+      "warnings": []
+    }
+  }
+}
+```
+
+## Legacy Flux2 Image Curl Examples
 
 ## Endpoints
 
