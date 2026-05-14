@@ -522,6 +522,7 @@ def _set_video_dimensions_and_length(workflow, width, height, num_frames):
         class_type = node.get("class_type", "")
         if class_type in {
             "EmptyHunyuanLatentVideo",
+            "WanImageToVideo",
             "Wan22ImageToVideoLatent",
             "WanFirstLastFrameToVideo",
         }:
@@ -559,6 +560,8 @@ def _set_video_save_fields(workflow, mode, fps):
                 inputs["filename_prefix"] = f"video/wan22_{mode}"
             if "fps" in inputs:
                 inputs["fps"] = int(fps)
+        if class_type == "CreateVideo" and "fps" in inputs:
+            inputs["fps"] = int(fps)
 
 
 def _set_video_load_image_fields(workflow, mode):
