@@ -408,3 +408,60 @@ class TestRunpodWorkerComfy(unittest.TestCase):
             )
 
         self.assertIn("did not return an image", str(ctx.exception))
+
+    @patch("handler.get_image_data", return_value=b"video-bytes")
+    @patch(
+        "handler._upload_artifact_to_s3",
+        return_value="https://bucket.example.com/out.mp4",
+    )
+    def test_collect_video_outputs_from_history_videos(self, mock_upload, mock_get):
+        history_outputs = {
+            "58": {
+                "videos": [
+                    {
+                        "filename": "out.mp4",
+                        "subfolder": "video",
+                        "type": "output",
+                    }
+                ]
+            }
+        }
+
+        videos, errors = handler._collect_video_outputs("job-1", history_outputs)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(
+            videos,
+            [
+                {
+                    "filename": "out.mp4",
+                    "type": "s3_url",
+                    "data": "https://bucket.example.com/out.mp4",
+                }
+            ],
+        )
+        mock_get.assert_called_with("out.mp4", "video", "output")
+        self.assertTrue(mock_upload.called)
+
+    @patch("handler.get_image_data", return_value=b"video-bytes")
+    @patch(
+        "handler._upload_artifact_to_s3",
+        return_value="https://bucket.example.com/out.mp4",
+    )
+    def test_collect_video_outputs_from_history_gifs(self, mock_upload, mock_get):
+        history_outputs = {
+            "58": {
+                "gifs": [
+                    {
+                        "filename": "out.mp4",
+                        "subfolder": "video",
+                        "type": "output",
+                    }
+                ]
+            }
+        }
+
+        videos, errors = handler._collect_video_outputs("job-1", history_outputs)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(videos[0]["filename"], "out.mp4")
