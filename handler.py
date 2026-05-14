@@ -102,17 +102,17 @@ DEFAULT_FLUX_MODEL_PRESETS = {
 DEFAULT_FLUX_MODEL_ASSETS = {
     "flux2-dev": [
         {
-            "path": "models/text_encoders/mistral_3_small_flux2_bf16.safetensors",
+            "path": "models/clip/mistral_3_small_flux2_bf16.safetensors", 
             "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/text_encoders/mistral_3_small_flux2_bf16.safetensors",
         },
         {
-            "path": "models/diffusion_models/flux2_dev_fp8mixed.safetensors",
+            "path": "models/unet/flux2_dev_fp8mixed.safetensors",
             "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/diffusion_models/flux2_dev_fp8mixed.safetensors",
         },
         {
             "path": "models/vae/flux2-vae.safetensors",
             "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors",
-        },
+        }
     ]
 }
 
