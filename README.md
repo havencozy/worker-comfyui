@@ -202,6 +202,7 @@ To enable SSH access to the worker, set the `PUBLIC_KEY` environment variable to
 - **[Deployment Guide](docs/deployment.md):** Detailed steps for deploying on RunPod.
 - **[API Testing Guide](docs/api-testing.md):** Historical RunPod curl commands and sample payloads for older image deployments.
 - **[Configuration Guide](docs/configuration.md):** Full list of environment variables (including S3 setup).
+- **[Network Volumes & Model Paths](docs/network-volumes.md):** RunPod Network Volume layout and `wget` commands for preloading Wan2.2 models when building with `MODEL_TYPE=none`.
 - **[Customization Guide](docs/customization.md):** Adding custom models and nodes (Network Volumes, Docker builds).
 - **[Development Guide](docs/development.md):** Setting up a local environment for development & testing
 - **[CI/CD Guide](docs/ci-cd.md):** Information about the automated Docker build and publish workflows.

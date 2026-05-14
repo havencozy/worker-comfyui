@@ -95,6 +95,91 @@ This makes runtime model preflight checks look for files under `/runpod-volume/m
 
 If the Hugging Face download requires authentication, set `HUGGINGFACE_ACCESS_TOKEN` or `HF_TOKEN` on the worker. The runtime downloader uses those variables when it needs to fetch missing files.
 
+## Preparing Wan2.2 14B Video Models on a Network Volume
+
+For the Wan2.2 video worker, prefer building the Docker image with `MODEL_TYPE=none` and storing model files on a RunPod Network Volume. This keeps builds small and avoids repeatedly downloading large model files during image builds.
+
+Build the worker image without baked models:
+
+```bash
+docker build --platform linux/amd64 \
+  --build-arg MODEL_TYPE=none \
+  -t worker-comfyui:wan2.2-video .
+```
+
+Then prepare the network volume once from a RunPod Pod attached to the same volume. In setup Pods, the network volume is usually mounted at `/workspace`; the same volume is mounted at `/runpod-volume` inside serverless workers.
+
+Run this once from the setup Pod:
+
+```bash
+# 1. Move to the network volume root inside the setup Pod
+cd /workspace
+
+# 2. Create the model directories expected by the worker
+mkdir -p models/diffusion_models models/text_encoders models/vae
+
+# 3. Download Wan2.2 T2V high-noise diffusion model
+wget --show-progress \
+  -O models/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors \
+  https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors
+
+# 4. Download Wan2.2 T2V low-noise diffusion model
+wget --show-progress \
+  -O models/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors \
+  https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors
+
+# 5. Download Wan2.2 I2V high-noise diffusion model
+wget --show-progress \
+  -O models/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors \
+  https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors
+
+# 6. Download Wan2.2 I2V low-noise diffusion model
+wget --show-progress \
+  -O models/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors \
+  https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors
+
+# 7. Download Wan text encoder
+wget --show-progress \
+  -O models/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors \
+  https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors
+
+# 8. Download Wan VAE
+wget --show-progress \
+  -O models/vae/wan_2.1_vae.safetensors \
+  https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors
+```
+
+Expected serverless worker view after attaching the volume:
+
+```text
+/runpod-volume/
+└── models/
+    ├── diffusion_models/
+    │   ├── wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors
+    │   ├── wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors
+    │   ├── wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors
+    │   └── wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors
+    ├── text_encoders/
+    │   └── umt5_xxl_fp8_e4m3fn_scaled.safetensors
+    └── vae/
+        └── wan_2.1_vae.safetensors
+```
+
+The handler checks these files before each job. If any are missing, the job fails before ComfyUI execution with `MODEL_ASSET_MISSING` and lists the missing filenames.
+
+Default search roots are:
+
+```text
+/runpod-volume/models
+/comfyui/models
+```
+
+You can override the roots with `WAN22_MODEL_ROOTS` using a colon-separated list:
+
+```text
+WAN22_MODEL_ROOTS=/runpod-volume/models:/custom/models
+```
+
 ## Supported File Extensions
 
 ComfyUI only recognizes files with specific extensions when scanning model directories.

@@ -17,7 +17,8 @@ This is the simplest method if the official images meet your needs.
   - Container Disk: Adjust based on the chosen image tag, see [GPU Recommendations](#gpu-recommendations).
   - (optional) Environment Variables: Configure S3 or other settings (see [Configuration Guide](configuration.md)).
     - For Flux2 with a Network Volume, set `COMFY_ROOT=/runpod-volume` after preloading the model files under `models/...` on the volume. See [Preparing Flux2 Models on a Network Volume](network-volumes.md#preparing-flux2-models-on-a-network-volume).
-    - Note: If you don't configure S3, images are returned as base64. For persistent storage across jobs without S3, consider using a [Network Volume](customization.md#method-2-network-volume-alternative-for-models). If models on your network volume are not being detected, see [Network Volumes & Model Paths](network-volumes.md) for troubleshooting steps.
+    - For Wan2.2 video with a Network Volume, build with `MODEL_TYPE=none`, preload the model files under `models/...` on the volume, and attach that volume to the endpoint. See [Preparing Wan2.2 14B Video Models on a Network Volume](network-volumes.md#preparing-wan22-14b-video-models-on-a-network-volume).
+    - Note: If you don't configure S3, image workflows can return images as base64. Wan2.2 video workflows require S3-compatible upload configuration because video artifacts are returned as `s3_url`. If models on your network volume are not being detected, see [Network Volumes & Model Paths](network-volumes.md) for troubleshooting steps.
 - Click on `Save Template`
 
 ### Create your endpoint
