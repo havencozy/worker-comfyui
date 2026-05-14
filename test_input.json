@@ -1,14 +1,19 @@
 {
   "input": {
-    "mode": "t2i",
-    "prompt": "a cinematic portrait photo, natural skin texture, soft light",
-    "aspect_ratio": "3:2",
-    "count": 1,
+    "mode": "t2v",
+    "prompt": "A cinematic shot of a red aircraft crossing a stormy sky, smooth camera motion",
+    "negative_prompt": "low quality, blur, distorted",
+    "resolution": "720p",
+    "duration": "auto",
+    "aspect_ratio": "16:9",
+    "seed": 12345,
+    "generate_audio": false,
     "options": {
-      "steps": 20,
-      "cfg": 4,
-      "seed": 64942253616932,
-      "sampler_name": "euler"
+      "fps": 24,
+      "steps": 30,
+      "guidance_scale": 7.5,
+      "motion_strength": 0.5,
+      "strength": 0.6
     }
   }
 }

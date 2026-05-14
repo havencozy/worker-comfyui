@@ -10,7 +10,7 @@
 
 ---
 
-This project runs curated ComfyUI image generation workflows as a serverless API endpoint on the RunPod platform. Submit simple `t2i` or `i2i` requests and receive generated images as base64 strings or S3 URLs.
+This project runs curated ComfyUI Wan2.2 video generation workflows as a serverless API endpoint on the RunPod platform. Submit `t2v`, `i2v`, or `r2v` requests and receive generated video artifacts as S3 URLs.
 
 ## Table of Contents
 
@@ -25,10 +25,10 @@ This project runs curated ComfyUI image generation workflows as a serverless API
 
 ## Quickstart
 
-1.  🐳 Choose one of the [available Docker images](#available-docker-images) for your serverless endpoint (e.g., `runpod/worker-comfyui:<version>-sd3`).
+1.  🐳 Choose one of the [available Docker images](#available-docker-images) for your serverless endpoint (e.g., `runpod/worker-comfyui:<version>-wan2.2-14b`).
 2.  📄 Follow the [Deployment Guide](docs/deployment.md) to set up your RunPod template and endpoint.
 3.  ⚙️ Optionally configure the worker (e.g., for S3 upload) using environment variables - see the full [Configuration Guide](docs/configuration.md).
-4.  🧪 Send either a text-to-image (`t2i`) or image-to-image (`i2i`) request.
+4.  🧪 Send a text-to-video (`t2v`), image-to-video (`i2v`), or first-last-frame (`r2v`) request.
 5.  🚀 Follow the [Usage](#usage) steps below to interact with your deployed endpoint.
 
 ## Available Docker Images
@@ -38,7 +38,7 @@ These images are available on Docker Hub under `runpod/worker-comfyui`:
 - **`runpod/worker-comfyui:<version>-base`**: Clean ComfyUI install with no models.
 - **`runpod/worker-comfyui:<version>-flux1-schnell`**: Includes checkpoint, text encoders, and VAE for [FLUX.1 schnell](https://huggingface.co/black-forest-labs/FLUX.1-schnell).
 - **`runpod/worker-comfyui:<version>-flux1-dev`**: Includes checkpoint, text encoders, and VAE for [FLUX.1 dev](https://huggingface.co/black-forest-labs/FLUX.1-dev).
-- **`runpod/worker-comfyui:<version>-flux2-dev`**: Includes model files used by the built-in Flux2 `t2i` and `i2i` templates.
+- **`runpod/worker-comfyui:<version>-wan2.2-14b`**: Includes Wan2.2 14B T2V/I2V diffusion models, text encoder, and VAE for video generation.
 - **`runpod/worker-comfyui:<version>-sdxl`**: Includes checkpoint and VAEs for [Stable Diffusion XL](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0).
 - **`runpod/worker-comfyui:<version>-sd3`**: Includes checkpoint for [Stable Diffusion 3 medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium).
 
@@ -46,7 +46,7 @@ Replace `<version>` with the current release tag, check the [releases page](http
 
 ## API Specification
 
-The worker exposes standard RunPod serverless endpoints (`/run`, `/runsync`, `/health`). By default, images are returned as base64 strings. You can configure the worker to upload images to an S3 bucket instead by setting specific environment variables (see [Configuration Guide](docs/configuration.md)).
+The worker exposes standard RunPod serverless endpoints (`/run`, `/runsync`, `/health`). Generated videos are uploaded to S3-compatible storage and returned as `s3_url` artifacts. Configure S3 before deploying this video worker (see [Configuration Guide](docs/configuration.md)).
 
 Use the `/runsync` endpoint for synchronous requests that wait for the job to complete and return the result directly. Use the `/run` endpoint for asynchronous requests that return immediately with a job ID; you'll need to poll the `/status` endpoint separately to get the result.
 
@@ -55,100 +55,95 @@ Use the `/runsync` endpoint for synchronous requests that wait for the job to co
 ```json
 {
   "input": {
-    "mode": "t2i",
-    "prompt": "a ball on the table",
-    "aspect_ratio": "1:1",
-    "count": 1,
+    "mode": "t2v",
+    "prompt": "A cinematic shot of a red aircraft crossing a stormy sky",
+    "negative_prompt": "low quality, blur",
+    "resolution": "720p",
+    "duration": "auto",
+    "aspect_ratio": "16:9",
+    "seed": 12345,
+    "generate_audio": false,
     "options": {
-      "steps": 20,
-      "cfg": 4,
-      "seed": 123456,
-      "sampler_name": "euler"
+      "fps": 24,
+      "steps": 30,
+      "guidance_scale": 7.5,
+      "motion_strength": 0.5,
+      "strength": 0.6
     }
   }
 }
 ```
 
-The following tables describe the fields within the `input` object:
+Supported modes:
 
-| Field Path                | Type    | Required | Description                                                                                                                   |
-| ------------------------- | ------- | -------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `input`                   | Object  | Yes      | Top-level object containing request data.                                                                                     |
-| `input.mode`              | String  | Yes      | Generation mode. Supported values are `t2i` and `i2i`.                                                                        |
-| `input.prompt`            | String  | Yes      | Positive prompt injected into the built-in workflow template.                                                                 |
-| `input.negative_prompt`   | String  | No       | Negative prompt, used only when the selected workflow has a negative prompt node.                                              |
-| `input.aspect_ratio`      | String  | No       | Preset size for `t2i`, or explicit resize for `i2i`. Supported values: `1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `3:2`, `2:3`.    |
-| `input.width`             | Integer | No       | Explicit output width. Must be paired with `input.height`. Overrides `aspect_ratio`.                                           |
-| `input.height`            | Integer | No       | Explicit output height. Must be paired with `input.width`. Overrides `aspect_ratio`.                                          |
-| `input.count`             | Integer | No       | Batch size. Defaults to `1`.                                                                                                  |
-| `input.image`             | String  | i2i only | Base64 input image for `i2i`. A data URI prefix is optional.                                                                  |
-| `input.image_name`        | String  | No       | Filename used when uploading `input.image` to ComfyUI. Defaults to `input_image.png`.                                         |
-| `input.images`            | Array   | No       | Legacy-compatible image upload array for `i2i`. If supplied, the first image is wired into the built-in Load Image node.      |
-| `input.options`           | Object  | No       | Optional sampler fields: `steps`, `seed`, `cfg`, `denoise`, and `sampler_name`.                                                |
-| `input.comfy_org_api_key` | String  | No       | Optional per-request Comfy.org API key for API Nodes. Overrides the `COMFY_ORG_API_KEY` environment variable if both are set. |
+- `t2v`: text-to-video using Wan2.2 14B T2V.
+- `i2v`: image-to-video using Wan2.2 14B I2V. Requires `start_frame` as an HTTP(S) URL, data URI, or base64 string.
+- `r2v`: first-last-frame video using Wan2.2 14B FLF2V. Requires `start_frame` and `end_frame`, or `image_urls[0]` and `image_urls[1]`.
 
-#### `input.images` Object
+Wan2.2 T2V/I2V/FLF2V outputs silent videos. `generate_audio=true` is accepted but returns `AUDIO_NOT_SUPPORTED_BY_WORKFLOW` in `meta.warnings`.
 
-Each object within the `input.images` array must contain:
+The following fields are supported within the `input` object:
 
-| Field Name | Type   | Required | Description                                                                                                                       |
-| ---------- | ------ | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `name`     | String | Yes      | Filename used to reference the image in the workflow (e.g., via a "Load Image" node). Must be unique within the array.            |
-| `image`    | String | Yes      | Base64 encoded string of the image. A data URI prefix (e.g., `data:image/png;base64,`) is optional and will be handled correctly. |
-
-> [!NOTE]
->
-> **Size Limits:** RunPod endpoints have request size limits (e.g., 10MB for `/run`, 20MB for `/runsync`). Large base64 input images can exceed these limits. See [RunPod Docs](https://docs.runpod.io/docs/serverless-endpoint-urls).
+| Field Path | Type | Required | Description |
+| ---------- | ---- | -------- | ----------- |
+| `input.mode` | String | Yes | Supported values: `t2v`, `i2v`, `r2v`. |
+| `input.prompt` | String | Yes | Positive prompt injected into the selected Wan2.2 workflow. |
+| `input.negative_prompt` | String | No | Negative prompt, defaults to an empty string. |
+| `input.resolution` | String | No | `480p`, `720p`, or `1080p`. Defaults to `720p`. |
+| `input.duration` | String or Integer | No | `auto` or integer seconds from `4` to `15`. `auto` means 5 seconds. |
+| `input.aspect_ratio` | String | No | `auto`, `21:9`, `16:9`, `4:3`, `1:1`, `3:4`, or `9:16`. `auto` maps to `16:9`. |
+| `input.seed` | Integer | No | Sampler seed from `0` to `2147483647`. |
+| `input.generate_audio` | Boolean | No | Accepted for API compatibility, but Wan2.2 T2V/I2V/FLF2V does not generate audio. |
+| `input.start_frame` | String | `i2v`, `r2v` alternative | HTTP(S) URL, data URI, or base64 frame. |
+| `input.end_frame` | String | `r2v` alternative | HTTP(S) URL, data URI, or base64 frame. |
+| `input.image_urls` | Array | `r2v` alternative | First two image URLs are used as start/end frames when `start_frame` and `end_frame` are not supplied. |
+| `input.video_urls` | Array | No | Validated for shape only; video references are not consumed in this Wan2.2 FLF2V deployment. |
+| `input.audio_urls` | Array | No | Validated for shape only; audio references are not consumed in this Wan2.2 FLF2V deployment. |
+| `input.options.fps` | Integer | No | `8..30`, defaults to `24`. |
+| `input.options.steps` | Integer | No | `10..80`, defaults to `30`. |
+| `input.options.guidance_scale` | Number | No | `1..20`, defaults to `7.5`. |
+| `input.options.motion_strength` | Number | No | `0..1`, defaults to `0.5`. |
+| `input.options.strength` | Number | No | `0..1`, defaults to `0.6`. |
 
 ### Output
-
-> [!WARNING]
->
-> **Breaking Change in Output Format (5.0.0+)**
->
-> Versions `< 5.0.0` returned the primary image data (S3 URL or base64 string) directly within an `output.message` field.
-> Starting with `5.0.0`, the output format has changed significantly, see below
 
 ```json
 {
   "id": "sync-uuid-string",
   "status": "COMPLETED",
   "output": {
-    "images": [
+    "videos": [
       {
-        "filename": "ComfyUI_00001_.png",
-        "type": "base64",
-        "data": "iVBORw0KGgoAAAANSUhEUg..."
+        "filename": "out.mp4",
+        "type": "s3_url",
+        "data": "https://..."
       }
-    ]
+    ],
+    "meta": {
+      "mode": "t2v",
+      "model": "wan2.2-14b",
+      "seed": 12345,
+      "fps": 24,
+      "duration_sec": 5,
+      "num_frames": 120,
+      "width": 1280,
+      "height": 720,
+      "warnings": []
+    }
   },
   "delayTime": 123,
   "executionTime": 4567
 }
 ```
 
-| Field Path      | Type             | Required | Description                                                                                                 |
-| --------------- | ---------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
-| `output`        | Object           | Yes      | Top-level object containing the results of the job execution.                                               |
-| `output.images` | Array of Objects | No       | Present if the workflow generated images. Contains a list of objects, each representing one output image.   |
-| `output.errors` | Array of Strings | No       | Present if non-fatal errors or warnings occurred during processing (e.g., S3 upload failure, missing data). |
-
-#### `output.images`
-
-Each object in the `output.images` array has the following structure:
-
-| Field Name | Type   | Description                                                                                     |
-| ---------- | ------ | ----------------------------------------------------------------------------------------------- |
-| `filename` | String | The original filename assigned by ComfyUI during generation.                                    |
-| `type`     | String | Indicates the format of the data. Either `"base64"` or `"s3_url"` (if S3 upload is configured). |
-| `data`     | String | Contains either the base64 encoded image string or the S3 URL for the uploaded image file.      |
-
-> [!NOTE]
-> The `output.images` field provides a list of all generated images (excluding temporary ones).
->
-> - If S3 upload is **not** configured (default), `type` will be `"base64"` and `data` will contain the base64 encoded image string.
-> - If S3 upload **is** configured, `type` will be `"s3_url"` and `data` will contain the S3 URL. See the [Configuration Guide](docs/configuration.md#example-s3-response) for an S3 example response.
-> - Clients interacting with the API need to handle this list-based structure under `output.images`.
+| Field Path | Type | Description |
+| ---------- | ---- | ----------- |
+| `output.videos` | Array | Generated video artifacts. |
+| `output.videos[].filename` | String | Filename assigned by ComfyUI. |
+| `output.videos[].type` | String | Always `s3_url` for production video deployment. |
+| `output.videos[].data` | String | S3 URL for the uploaded video. |
+| `output.meta` | Object | Normalized request and workflow metadata. |
+| `output.errors` | Array | Present if non-fatal warnings or artifact handling errors occurred. |
 
 ## Usage
 
@@ -157,7 +152,7 @@ To interact with your deployed RunPod endpoint:
 1.  **Get API Key:** Generate a key in RunPod [User Settings](https://www.runpod.io/console/serverless/user/settings) (`API Keys` section).
 2.  **Get Endpoint ID:** Find your endpoint ID on the [Serverless Endpoints](https://www.runpod.io/console/serverless/user/endpoints) page or on the `Overview` page of your endpoint.
 
-### Generate Image (Sync Example)
+### Generate Video (Sync Example)
 
 Send a generation request to the `/runsync` endpoint (waits for completion). Replace `<api_key>` and `<endpoint_id>`. The `-d` value should contain the [JSON input described above](#input).
 
@@ -165,26 +160,27 @@ Send a generation request to the `/runsync` endpoint (waits for completion). Rep
 curl -X POST \
   -H "Authorization: Bearer <api_key>" \
   -H "Content-Type: application/json" \
-  -d '{"input":{"mode":"t2i","prompt":"a ball on the table","aspect_ratio":"1:1"}}' \
+  -d '{"input":{"mode":"t2v","prompt":"A cinematic shot of a red aircraft crossing a stormy sky","resolution":"720p","aspect_ratio":"16:9"}}' \
   https://api.runpod.ai/v2/<endpoint_id>/runsync
 ```
 
-For image-to-image, send `mode: "i2i"` and include either `image` plus optional `image_name`, or the legacy `images` array:
+For image-to-video, send `mode: "i2v"` and include `start_frame`:
 
 ```json
 {
   "input": {
-    "mode": "i2i",
-    "prompt": "preserve identity, cinematic color grading",
-    "image": "data:image/png;base64,iVBOR...",
-    "image_name": "input_image.png"
+    "mode": "i2v",
+    "prompt": "preserve identity, cinematic motion",
+    "start_frame": "data:image/png;base64,iVBOR..."
   }
 }
 ```
 
+For reference-to-video, send `mode: "r2v"` with start and end frames, or provide two `image_urls`.
+
 You can also use the `/run` endpoint for asynchronous jobs and then poll the `/status` to see when the job is done. Or you [add a `webhook` into your request](https://docs.runpod.io/serverless/endpoints/send-requests#webhook-notifications) to be notified when the job is done.
 
-Refer to [`docs/api-testing.md`](./docs/api-testing.md) and [`sample_payloads/`](./sample_payloads/) for ready-to-send RunPod test payloads.
+Refer to [`test_input.json`](./test_input.json) for a ready-to-send RunPod test payload.
 
 ## Customizing Workflow Templates
 
@@ -194,7 +190,7 @@ To replace a built-in template:
 
 1.  Open ComfyUI in your browser.
 2.  In the top navigation, select `Workflow > Export (API)`
-3.  Save the exported JSON over `workflows/flux2_t2i.json` or `workflows/flux2_i2i.json`.
+3.  Save the exported JSON over `workflows/wan2_2_14b_t2v.json`, `workflows/wan2_2_14b_i2v.json`, or `workflows/wan2_2_14b_flf2v.json`.
 4.  Rebuild the Docker image.
 
 ## SSH Access
@@ -204,7 +200,7 @@ To enable SSH access to the worker, set the `PUBLIC_KEY` environment variable to
 ## Further Documentation
 
 - **[Deployment Guide](docs/deployment.md):** Detailed steps for deploying on RunPod.
-- **[API Testing Guide](docs/api-testing.md):** RunPod curl commands and sample payloads for `t2i` and `i2i`.
+- **[API Testing Guide](docs/api-testing.md):** Historical RunPod curl commands and sample payloads for older image deployments.
 - **[Configuration Guide](docs/configuration.md):** Full list of environment variables (including S3 setup).
 - **[Customization Guide](docs/customization.md):** Adding custom models and nodes (Network Volumes, Docker builds).
 - **[Development Guide](docs/development.md):** Setting up a local environment for development & testing
