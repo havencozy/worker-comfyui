@@ -184,7 +184,7 @@ For image-to-image, send `mode: "i2i"` and include either `image` plus optional 
 
 You can also use the `/run` endpoint for asynchronous jobs and then poll the `/status` to see when the job is done. Or you [add a `webhook` into your request](https://docs.runpod.io/serverless/endpoints/send-requests#webhook-notifications) to be notified when the job is done.
 
-Refer to [`test_input.json`](./test_input.json) for a complete input example.
+Refer to [`docs/api-testing.md`](./docs/api-testing.md) and [`sample_payloads/`](./sample_payloads/) for ready-to-send RunPod test payloads.
 
 ## Customizing Workflow Templates
 
@@ -204,6 +204,7 @@ To enable SSH access to the worker, set the `PUBLIC_KEY` environment variable to
 ## Further Documentation
 
 - **[Deployment Guide](docs/deployment.md):** Detailed steps for deploying on RunPod.
+- **[API Testing Guide](docs/api-testing.md):** RunPod curl commands and sample payloads for `t2i` and `i2i`.
 - **[Configuration Guide](docs/configuration.md):** Full list of environment variables (including S3 setup).
 - **[Customization Guide](docs/customization.md):** Adding custom models and nodes (Network Volumes, Docker builds).
 - **[Development Guide](docs/development.md):** Setting up a local environment for development & testing

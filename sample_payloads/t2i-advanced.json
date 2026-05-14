@@ -1,0 +1,16 @@
+{
+  "input": {
+    "mode": "t2i",
+    "model": "flux2-dev",
+    "prompt": "a premium product photo of a matte black wireless headphone on brushed steel, softbox lighting, crisp details",
+    "negative_prompt": "blurry, low quality, distorted, text, watermark",
+    "aspect_ratio": "3:2",
+    "count": 1,
+    "options": {
+      "steps": 20,
+      "cfg": 4,
+      "seed": 649422536169327,
+      "sampler_name": "euler"
+    }
+  }
+}

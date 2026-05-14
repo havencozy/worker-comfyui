@@ -1,0 +1,16 @@
+{
+  "input": {
+    "mode": "i2i",
+    "model": "flux2-dev",
+    "prompt": "preserve composition, convert to a polished cinematic portrait, realistic lighting, detailed fabric texture",
+    "image_name": "source.png",
+    "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAMklEQVR4nGI5ZdXAQEvARFPTRy0YtWDUglELRi0YtWDUglELRi0YtWDUAioCQAAAAP//E24Bx3jUKuYAAAAASUVORK5CYII=",
+    "count": 1,
+    "options": {
+      "steps": 20,
+      "cfg": 4,
+      "seed": 987654321,
+      "sampler_name": "euler"
+    }
+  }
+}

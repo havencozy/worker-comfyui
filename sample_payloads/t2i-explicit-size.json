@@ -1,0 +1,15 @@
+{
+  "input": {
+    "mode": "t2i",
+    "prompt": "an editorial fashion photo in a clean concrete studio, high detail, natural pose",
+    "width": 1024,
+    "height": 1024,
+    "count": 1,
+    "options": {
+      "steps": 16,
+      "cfg": 3.5,
+      "seed": 123456789,
+      "sampler_name": "euler"
+    }
+  }
+}

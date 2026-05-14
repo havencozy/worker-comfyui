@@ -1,0 +1,8 @@
+{
+  "input": {
+    "mode": "i2i",
+    "prompt": "preserve identity, enhance details, natural cinematic color grading",
+    "image_name": "input_image.png",
+    "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAMklEQVR4nGI5ZdXAQEvARFPTRy0YtWDUglELRi0YtWDUglELRi0YtWDUAioCQAAAAP//E24Bx3jUKuYAAAAASUVORK5CYII="
+  }
+}
