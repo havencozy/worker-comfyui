@@ -633,6 +633,17 @@ def _build_video_mode_input(job_input, mode):
         return None, _error("VALIDATION_ERROR", str(exc))
 
 
+def _fetch_remote_image(remote_image):
+    url = remote_image["url"]
+    response = requests.get(url, timeout=60)
+    response.raise_for_status()
+    content_type = response.headers.get("content-type", "")
+    if not content_type.startswith("image/"):
+        raise ValueError(f"Remote asset {url} did not return an image content type")
+    encoded = base64.b64encode(response.content).decode("utf-8")
+    return {"name": remote_image["name"], "image": encoded}
+
+
 def _resolve_dimensions(
     aspect_ratio, width, height, default_width=1024, default_height=1024
 ):
@@ -1281,6 +1292,7 @@ def handler(job):
     # Extract validated data
     workflow = validated_data["workflow"]
     input_images = validated_data.get("images")
+    remote_images = validated_data.get("remote_images") or []
     selected_model = validated_data.get("selected_model")
 
     # For custom API: verify model assets are present, download once if missing
@@ -1298,6 +1310,18 @@ def handler(job):
         return {
             "error": f"ComfyUI server ({COMFY_HOST}) not reachable after multiple retries."
         }
+
+    if remote_images:
+        try:
+            fetched_images = [_fetch_remote_image(item) for item in remote_images]
+        except Exception as exc:
+            return {
+                "error": {
+                    "code": "ASSET_FETCH_FAILED",
+                    "message": str(exc),
+                }
+            }
+        input_images = (input_images or []) + fetched_images
 
     # Upload input images if they exist
     if input_images:

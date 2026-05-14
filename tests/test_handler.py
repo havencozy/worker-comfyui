@@ -374,3 +374,37 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
         self.assertEqual(len(responses), 3)
         self.assertEqual(responses["status"], "error")
+
+    @patch("handler.requests.get")
+    def test_fetch_remote_image_as_upload_object(self, mock_get):
+        response = MagicMock()
+        response.content = b"image-bytes"
+        response.headers = {"content-type": "image/png"}
+        response.raise_for_status.return_value = None
+        mock_get.return_value = response
+
+        result = handler._fetch_remote_image(
+            {"name": "start_frame.png", "url": "https://example.com/start.png"}
+        )
+
+        self.assertEqual(result["name"], "start_frame.png")
+        self.assertEqual(
+            result["image"],
+            base64.b64encode(b"image-bytes").decode("utf-8"),
+        )
+        mock_get.assert_called_with("https://example.com/start.png", timeout=60)
+
+    @patch("handler.requests.get")
+    def test_fetch_remote_image_rejects_non_image_content(self, mock_get):
+        response = MagicMock()
+        response.content = b"not-image"
+        response.headers = {"content-type": "text/plain"}
+        response.raise_for_status.return_value = None
+        mock_get.return_value = response
+
+        with self.assertRaises(ValueError) as ctx:
+            handler._fetch_remote_image(
+                {"name": "start_frame.png", "url": "https://example.com/start.txt"}
+            )
+
+        self.assertIn("did not return an image", str(ctx.exception))
