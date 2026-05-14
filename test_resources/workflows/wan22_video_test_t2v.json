@@ -1,0 +1,38 @@
+{
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "CLIP Text Encode (Positive Prompt)"},
+    "inputs": {"text": "old positive", "clip": ["38", 0]}
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "CLIP Text Encode (Negative Prompt)"},
+    "inputs": {"text": "old negative", "clip": ["38", 0]}
+  },
+  "38": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    }
+  },
+  "55": {
+    "class_type": "EmptyHunyuanLatentVideo",
+    "inputs": {"width": 640, "height": 640, "length": 81, "batch_size": 1}
+  },
+  "57": {
+    "class_type": "KSamplerAdvanced",
+    "inputs": {
+      "noise_seed": 1,
+      "steps": 20,
+      "cfg": 5.0,
+      "sampler_name": "euler",
+      "scheduler": "simple"
+    }
+  },
+  "58": {
+    "class_type": "SaveVideo",
+    "inputs": {"filename_prefix": "video/ComfyUI", "fps": 16, "format": "auto"}
+  }
+}
