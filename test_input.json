@@ -7,7 +7,7 @@
     "options": {
       "steps": 20,
       "cfg": 4,
-      "seed": 649422536169327,
+      "seed": 64942253616932,
       "sampler_name": "euler"
     }
   }
