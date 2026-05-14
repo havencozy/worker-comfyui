@@ -285,6 +285,51 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertIsNone(validated_data)
         self.assertEqual(error["code"], "UNSUPPORTED_MODE")
 
+    @patch("handler.os.path.exists", return_value=True)
+    def test_wan22_model_preflight_passes_when_required_files_exist(self, mock_exists):
+        ok, error = handler._check_wan22_model_assets()
+
+        self.assertTrue(ok)
+        self.assertIsNone(error)
+        checked_paths = [call.args[0] for call in mock_exists.call_args_list]
+        self.assertIn(
+            "/runpod-volume/models/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
+            checked_paths,
+        )
+
+    @patch("handler.os.path.exists")
+    def test_wan22_model_preflight_reports_missing_files(self, mock_exists):
+        def exists(path):
+            return "umt5_xxl_fp8_e4m3fn_scaled.safetensors" not in path
+
+        mock_exists.side_effect = exists
+
+        ok, error = handler._check_wan22_model_assets()
+
+        self.assertFalse(ok)
+        self.assertEqual(error["code"], "MODEL_ASSET_MISSING")
+        self.assertIn("umt5_xxl_fp8_e4m3fn_scaled.safetensors", error["message"])
+
+    @patch("handler.check_server")
+    @patch("handler._check_wan22_model_assets")
+    def test_handler_returns_missing_model_before_server_check(
+        self, mock_preflight, mock_check_server
+    ):
+        mock_preflight.return_value = (
+            False,
+            {
+                "code": "MODEL_ASSET_MISSING",
+                "message": "Missing Wan2.2 model files: models/vae/wan_2.1_vae.safetensors",
+            },
+        )
+
+        result = handler.handler(
+            {"id": "job-1", "input": {"mode": "t2v", "prompt": "test video"}}
+        )
+
+        self.assertEqual(result["error"]["code"], "MODEL_ASSET_MISSING")
+        mock_check_server.assert_not_called()
+
     def test_invalid_json_string_input(self):
         validated_data, error = handler.validate_input("invalid json")
 

@@ -83,6 +83,14 @@ DEFAULT_VIDEO_OPTIONS = {
     "motion_strength": 0.5,
     "strength": 0.6,
 }
+WAN22_REQUIRED_MODEL_FILES = (
+    "diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
+    "diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
+    "diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+    "diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
+    "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+    "vae/wan_2.1_vae.safetensors",
+)
 
 
 def _refresh_runtime_config():
@@ -300,6 +308,49 @@ def _load_workflow_template(path):
 
 def _error(code, message):
     return {"code": code, "message": message}
+
+
+def _wan22_model_roots():
+    raw_roots = os.environ.get("WAN22_MODEL_ROOTS")
+    if raw_roots:
+        candidates = [root for root in raw_roots.split(os.pathsep) if root]
+    else:
+        comfy_root = os.environ.get("COMFY_ROOT", "/comfyui")
+        candidates = [
+            "/runpod-volume/models",
+            os.path.join(comfy_root, "models"),
+            "/comfyui/models",
+        ]
+
+    roots = []
+    for root in candidates:
+        normalized = os.path.normpath(root)
+        if normalized not in roots:
+            roots.append(normalized)
+    return roots
+
+
+def _check_wan22_model_assets():
+    roots = _wan22_model_roots()
+    missing = []
+
+    for rel_path in WAN22_REQUIRED_MODEL_FILES:
+        if any(os.path.exists(os.path.join(root, rel_path)) for root in roots):
+            continue
+        missing.append(f"models/{rel_path}")
+
+    if not missing:
+        return True, None
+
+    return False, {
+        "code": "MODEL_ASSET_MISSING",
+        "message": (
+            "Missing Wan2.2 model files: "
+            + ", ".join(missing)
+            + ". Expected them under one of: "
+            + ", ".join(roots)
+        ),
+    }
 
 
 def _round_to_multiple(value, multiple=16):
@@ -1351,6 +1402,10 @@ def handler(job):
     input_images = validated_data.get("images")
     remote_images = validated_data.get("remote_images") or []
     selected_model = validated_data.get("selected_model")
+
+    ok, model_error = _check_wan22_model_assets()
+    if not ok:
+        return {"error": model_error}
 
     # For custom API: verify model assets are present, download once if missing
     if selected_model:
