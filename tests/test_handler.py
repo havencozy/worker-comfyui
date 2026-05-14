@@ -77,122 +77,213 @@ RUNPOD_WORKER_COMFY_TEST_RESOURCES_IMAGES = "./test_resources/images"
 
 
 class TestRunpodWorkerComfy(unittest.TestCase):
-    def test_valid_t2i_input_builds_workflow_from_template(self):
-        input_data = {
-            "mode": "t2i",
-            "prompt": "a red fox in a studio portrait",
-            "aspect_ratio": "16:9",
-            "count": 2,
-            "options": {
-                "steps": 12,
-                "seed": 42,
-                "cfg": 3.5,
-                "sampler_name": "ddim",
+    def setUp(self):
+        self.workflow_env = patch.dict(
+            os.environ,
+            {
+                "WAN22_T2V_WORKFLOW_PATH": os.path.join(
+                    REPO_ROOT, "test_resources/workflows/wan22_video_test_t2v.json"
+                ),
+                "WAN22_I2V_WORKFLOW_PATH": os.path.join(
+                    REPO_ROOT, "test_resources/workflows/wan22_video_test_i2v.json"
+                ),
+                "WAN22_R2V_WORKFLOW_PATH": os.path.join(
+                    REPO_ROOT, "test_resources/workflows/wan22_video_test_flf2v.json"
+                ),
+                "BUCKET_ENDPOINT_URL": "https://bucket.example.com",
             },
+        )
+        self.workflow_env.start()
+        handler._refresh_runtime_config()
+
+    def tearDown(self):
+        self.workflow_env.stop()
+        handler._refresh_runtime_config()
+
+    def test_valid_t2v_input_builds_wan22_t2v_workflow(self):
+        input_data = {
+            "mode": "t2v",
+            "prompt": "a red aircraft crossing a storm",
+            "negative_prompt": "blur",
+            "resolution": "720p",
+            "aspect_ratio": "16:9",
+            "duration": 5,
+            "seed": 42,
+            "options": {"fps": 24, "steps": 30, "guidance_scale": 7.5},
         }
 
         validated_data, error = handler.validate_input(input_data)
 
         self.assertIsNone(error)
         workflow = validated_data["workflow"]
-        self.assertIsNone(validated_data["images"])
         self.assertEqual(workflow["6"]["inputs"]["text"], input_data["prompt"])
-        self.assertEqual(workflow["47"]["inputs"]["width"], 1344)
-        self.assertEqual(workflow["47"]["inputs"]["height"], 768)
-        self.assertEqual(workflow["47"]["inputs"]["batch_size"], 2)
-        self.assertEqual(workflow["48"]["inputs"]["steps"], 12)
-        self.assertEqual(workflow["25"]["inputs"]["noise_seed"], 42)
-        self.assertEqual(workflow["26"]["inputs"]["guidance"], 3.5)
-        self.assertEqual(workflow["16"]["inputs"]["sampler_name"], "ddim")
+        self.assertEqual(workflow["7"]["inputs"]["text"], input_data["negative_prompt"])
+        self.assertEqual(workflow["55"]["inputs"]["width"], 1280)
+        self.assertEqual(workflow["55"]["inputs"]["height"], 720)
+        self.assertEqual(workflow["55"]["inputs"]["length"], 120)
+        self.assertEqual(workflow["57"]["inputs"]["noise_seed"], 42)
+        self.assertEqual(workflow["57"]["inputs"]["steps"], 30)
+        self.assertEqual(workflow["57"]["inputs"]["cfg"], 7.5)
+        self.assertEqual(workflow["58"]["inputs"]["fps"], 24)
+        self.assertEqual(validated_data["meta"]["mode"], "t2v")
+        self.assertEqual(validated_data["meta"]["num_frames"], 120)
+        self.assertEqual(validated_data["meta"]["warnings"], [])
 
-    def test_valid_i2i_input_uploads_image_and_preserves_source_dimensions_by_default(
-        self,
-    ):
-        input_data = {
-            "mode": "i2i",
-            "prompt": "preserve identity with cinematic color",
-            "image": "data:image/png;base64,ZmFrZQ==",
-            "image_name": "portrait.png",
-            "count": 3,
-        }
-
-        validated_data, error = handler.validate_input(input_data)
-
-        self.assertIsNone(error)
-        workflow = validated_data["workflow"]
-        self.assertEqual(
-            validated_data["images"],
-            [{"name": "portrait.png", "image": input_data["image"]}],
-        )
-        self.assertEqual(workflow["6"]["inputs"]["text"], input_data["prompt"])
-        self.assertEqual(workflow["46"]["inputs"]["image"], "portrait.png")
-        self.assertEqual(workflow["47"]["inputs"]["width"], ["72", 0])
-        self.assertEqual(workflow["47"]["inputs"]["height"], ["72", 1])
-        self.assertEqual(workflow["47"]["inputs"]["batch_size"], 3)
-
-    def test_valid_i2i_input_accepts_legacy_images_array_for_upload_only(self):
-        input_data = {
-            "mode": "i2i",
-            "prompt": "enhance details",
-            "images": [{"name": "input.png", "image": "ZmFrZQ=="}],
-        }
-
-        validated_data, error = handler.validate_input(input_data)
-
-        self.assertIsNone(error)
-        self.assertEqual(validated_data["images"], input_data["images"])
-        self.assertEqual(
-            validated_data["workflow"]["46"]["inputs"]["image"],
-            "input.png",
-        )
-
-    def test_valid_json_string_input(self):
-        input_data = '{"mode": "t2i", "prompt": "a clean product render"}'
+    def test_valid_json_string_input_for_t2v(self):
+        input_data = '{"mode": "t2v", "prompt": "clean cinematic motion"}'
 
         validated_data, error = handler.validate_input(input_data)
 
         self.assertIsNone(error)
         self.assertEqual(
             validated_data["workflow"]["6"]["inputs"]["text"],
-            "a clean product render",
+            "clean cinematic motion",
         )
 
-    def test_input_missing_mode(self):
-        validated_data, error = handler.validate_input({"prompt": "hello"})
-
-        self.assertIsNone(validated_data)
-        self.assertEqual(
-            error,
-            "Missing or invalid 'mode'. Supported values: 't2i', 'i2i'",
-        )
-
-    def test_input_missing_prompt(self):
-        validated_data, error = handler.validate_input({"mode": "t2i"})
-
-        self.assertIsNone(validated_data)
-        self.assertEqual(error, "Missing 'prompt' parameter")
-
-    def test_i2i_missing_image(self):
-        validated_data, error = handler.validate_input(
-            {"mode": "i2i", "prompt": "enhance"}
-        )
-
-        self.assertIsNone(validated_data)
-        self.assertEqual(error, "Missing 'image' (or 'images') parameter for i2i mode")
-
-    def test_i2i_with_invalid_images_structure(self):
+    def test_t2v_generate_audio_adds_warning(self):
         input_data = {
-            "mode": "i2i",
-            "prompt": "enhance",
-            "images": [{"name": "image1.png"}],
+            "mode": "t2v",
+            "prompt": "silent mountains",
+            "generate_audio": True,
         }
 
         validated_data, error = handler.validate_input(input_data)
 
-        self.assertIsNone(validated_data)
-        self.assertEqual(
-            error, "'images' must be a list of objects with 'name' and 'image' keys"
+        self.assertIsNone(error)
+        self.assertIn(
+            "AUDIO_NOT_SUPPORTED_BY_WORKFLOW",
+            validated_data["meta"]["warnings"],
         )
+
+    def test_valid_i2v_requires_and_wires_start_frame(self):
+        input_data = {
+            "mode": "i2v",
+            "prompt": "a portrait turns toward camera",
+            "start_frame": "data:image/png;base64,ZmFrZQ==",
+        }
+
+        validated_data, error = handler.validate_input(input_data)
+
+        self.assertIsNone(error)
+        self.assertEqual(
+            validated_data["images"],
+            [{"name": "start_frame.png", "image": input_data["start_frame"]}],
+        )
+        self.assertEqual(
+            validated_data["workflow"]["56"]["inputs"]["image"],
+            "start_frame.png",
+        )
+
+    def test_i2v_missing_start_frame_fails(self):
+        validated_data, error = handler.validate_input(
+            {"mode": "i2v", "prompt": "move"}
+        )
+
+        self.assertIsNone(validated_data)
+        self.assertEqual(error["code"], "VALIDATION_ERROR")
+        self.assertIn("start_frame", error["message"])
+
+    def test_valid_r2v_wires_start_and_end_frames(self):
+        input_data = {
+            "mode": "r2v",
+            "prompt": "transform between frames",
+            "start_frame": "data:image/png;base64,c3RhcnQ=",
+            "end_frame": "data:image/png;base64,ZW5k",
+        }
+
+        validated_data, error = handler.validate_input(input_data)
+
+        self.assertIsNone(error)
+        self.assertEqual(
+            validated_data["images"],
+            [
+                {"name": "start_frame.png", "image": input_data["start_frame"]},
+                {"name": "end_frame.png", "image": input_data["end_frame"]},
+            ],
+        )
+        self.assertEqual(
+            validated_data["workflow"]["62"]["inputs"]["image"],
+            "start_frame.png",
+        )
+        self.assertEqual(
+            validated_data["workflow"]["68"]["inputs"]["image"],
+            "end_frame.png",
+        )
+
+    def test_r2v_accepts_first_two_image_urls(self):
+        input_data = {
+            "mode": "r2v",
+            "prompt": "transform @Image1 into @Image2",
+            "image_urls": [
+                "https://example.com/start.png",
+                "https://example.com/end.png",
+            ],
+        }
+
+        validated_data, error = handler.validate_input(input_data)
+
+        self.assertIsNone(error)
+        self.assertEqual(
+            validated_data["remote_images"],
+            [
+                {"name": "start_frame.png", "url": "https://example.com/start.png"},
+                {"name": "end_frame.png", "url": "https://example.com/end.png"},
+            ],
+        )
+
+    def test_r2v_missing_second_frame_fails(self):
+        validated_data, error = handler.validate_input(
+            {
+                "mode": "r2v",
+                "prompt": "transform",
+                "image_urls": ["https://example.com/start.png"],
+            }
+        )
+
+        self.assertIsNone(validated_data)
+        self.assertEqual(error["code"], "VALIDATION_ERROR")
+        self.assertIn("two frame references", error["message"])
+
+    def test_r2v_image_placeholder_requires_matching_image_url(self):
+        validated_data, error = handler.validate_input(
+            {
+                "mode": "r2v",
+                "prompt": "move from @Image3 to @Image1",
+                "image_urls": [
+                    "https://example.com/start.png",
+                    "https://example.com/end.png",
+                ],
+            }
+        )
+
+        self.assertIsNone(validated_data)
+        self.assertEqual(error["code"], "VALIDATION_ERROR")
+        self.assertIn("@Image3", error["message"])
+
+    def test_r2v_video_placeholder_is_unsupported(self):
+        validated_data, error = handler.validate_input(
+            {
+                "mode": "r2v",
+                "prompt": "follow @Video1",
+                "image_urls": [
+                    "https://example.com/start.png",
+                    "https://example.com/end.png",
+                ],
+                "video_urls": ["https://example.com/ref.mp4"],
+            }
+        )
+
+        self.assertIsNone(validated_data)
+        self.assertEqual(error["code"], "UNSUPPORTED_REFERENCE_COMBINATION")
+        self.assertIn("@Video1", error["message"])
+
+    def test_legacy_image_modes_are_not_supported(self):
+        validated_data, error = handler.validate_input(
+            {"mode": "t2i", "prompt": "old image mode"}
+        )
+
+        self.assertIsNone(validated_data)
+        self.assertEqual(error["code"], "UNSUPPORTED_MODE")
 
     def test_invalid_json_string_input(self):
         validated_data, error = handler.validate_input("invalid json")
