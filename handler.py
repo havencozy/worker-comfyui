@@ -732,10 +732,20 @@ def _collect_video_outputs(job_id, outputs):
         for key in ("videos", "gifs"):
             video_items.extend(node_output.get(key, []))
 
+        print(
+            "worker-comfyui - History output node "
+            f"{node_id}: keys={sorted((node_output or {}).keys())}, "
+            f"video_items={len(video_items)}"
+        )
         for video_info in video_items:
             filename = video_info.get("filename")
             subfolder = video_info.get("subfolder", "")
             output_type = video_info.get("type")
+            print(
+                "worker-comfyui - History video candidate: "
+                f"node={node_id}, filename={filename}, "
+                f"subfolder={subfolder}, type={output_type}"
+            )
             if not filename:
                 errors.append(
                     f"Skipping video in node {node_id} due to missing filename"
@@ -755,6 +765,7 @@ def _collect_video_outputs(job_id, outputs):
                 errors.append(f"Error uploading {filename} to S3: {exc}")
                 continue
 
+            print(f"worker-comfyui - Uploaded history video artifact: {filename}")
             videos.append({"filename": filename, "type": "s3_url", "data": s3_url})
     return videos, errors
 
@@ -776,15 +787,32 @@ def _iter_recent_video_paths(output_dir, since_epoch, filename_prefix=None):
             search_dir = os.path.join(output_dir, prefix_dir)
         normalized_prefix = os.path.basename(normalized_prefix)
 
+    print(
+        "worker-comfyui - Scanning ComfyUI output directory for videos: "
+        f"output_dir={output_dir}, search_dir={search_dir}, "
+        f"filename_prefix={filename_prefix}, normalized_prefix={normalized_prefix}, "
+        f"since_epoch={since_epoch:.3f}"
+    )
     if not os.path.isdir(search_dir):
+        print(
+            "worker-comfyui - Video output search directory does not exist: "
+            f"{search_dir}"
+        )
         return []
 
     matches = []
+    skipped_prefix = 0
+    skipped_extension = 0
+    skipped_old = 0
+    scanned_files = 0
     for root, _dirs, files in os.walk(search_dir):
         for filename in files:
+            scanned_files += 1
             if normalized_prefix and not filename.startswith(normalized_prefix):
+                skipped_prefix += 1
                 continue
             if not filename.lower().endswith(VIDEO_OUTPUT_EXTENSIONS):
+                skipped_extension += 1
                 continue
 
             path = os.path.join(root, filename)
@@ -793,10 +821,25 @@ def _iter_recent_video_paths(output_dir, since_epoch, filename_prefix=None):
             except OSError:
                 continue
             if modified_at < since_epoch:
+                skipped_old += 1
                 continue
             matches.append((modified_at, path))
 
     matches.sort(reverse=True)
+    preview = [
+        {
+            "path": path,
+            "mtime": round(modified_at, 3),
+            "size": os.path.getsize(path) if os.path.exists(path) else None,
+        }
+        for modified_at, path in matches[:5]
+    ]
+    print(
+        "worker-comfyui - Video output scan complete: "
+        f"scanned_files={scanned_files}, matches={len(matches)}, "
+        f"skipped_prefix={skipped_prefix}, skipped_extension={skipped_extension}, "
+        f"skipped_old={skipped_old}, preview={preview}"
+    )
     return [path for _modified_at, path in matches]
 
 
@@ -811,11 +854,16 @@ def _collect_recent_video_files(job_id, since_epoch, filename_prefix=None):
         try:
             with open(path, "rb") as video_file:
                 video_bytes = video_file.read()
+            print(
+                "worker-comfyui - Uploading fallback video artifact from disk: "
+                f"path={path}, filename={filename}, bytes={len(video_bytes)}"
+            )
             s3_url = _upload_artifact_to_s3(job_id, filename, video_bytes)
         except Exception as exc:
             errors.append(f"Error uploading {filename} from output directory: {exc}")
             continue
 
+        print(f"worker-comfyui - Uploaded fallback video artifact: {filename}")
         videos.append({"filename": filename, "type": "s3_url", "data": s3_url})
 
     if not videos:
