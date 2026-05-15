@@ -2,6 +2,8 @@ import base64
 import json
 import os
 import sys
+import tempfile
+import time
 import types
 import unittest
 from unittest.mock import MagicMock, Mock, patch
@@ -154,6 +156,23 @@ class TestRunpodWorkerComfy(unittest.TestCase):
             "AUDIO_NOT_SUPPORTED_BY_WORKFLOW",
             validated_data["meta"]["warnings"],
         )
+
+    def test_set_video_save_fields_can_scope_filename_prefix_to_job_id(self):
+        workflow = {
+            "1": {
+                "class_type": "SaveVideo",
+                "inputs": {"filename_prefix": "video/ComfyUI", "fps": 16},
+            },
+            "2": {"class_type": "CreateVideo", "inputs": {"fps": 16}},
+        }
+
+        handler._set_video_save_fields(workflow, "t2v", 24, job_id="job-123")
+
+        self.assertEqual(
+            workflow["1"]["inputs"]["filename_prefix"], "video/job-123_wan22_t2v"
+        )
+        self.assertEqual(workflow["1"]["inputs"]["fps"], 24)
+        self.assertEqual(workflow["2"]["inputs"]["fps"], 24)
 
     def test_valid_i2v_requires_and_wires_start_frame(self):
         input_data = {
@@ -510,3 +529,40 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
         self.assertEqual(errors, [])
         self.assertEqual(videos[0]["filename"], "out.mp4")
+
+    @patch(
+        "handler._upload_artifact_to_s3",
+        return_value="https://bucket.example.com/job-1_wan22_t2v_00001.mp4",
+    )
+    def test_collect_recent_video_file_when_savevideo_history_has_no_video_keys(
+        self, mock_upload
+    ):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = os.path.join(tmpdir, "output")
+            video_dir = os.path.join(output_dir, "video")
+            os.makedirs(video_dir)
+            video_path = os.path.join(video_dir, "job-1_wan22_t2v_00001.mp4")
+            with open(video_path, "wb") as video_file:
+                video_file.write(b"video-bytes")
+
+            with patch.dict(os.environ, {"COMFY_OUTPUT_DIR": output_dir}):
+                videos, errors = handler._collect_recent_video_files(
+                    "job-1",
+                    since_epoch=time.time() - 60,
+                    filename_prefix="video/job-1_wan22_t2v",
+                )
+
+        self.assertEqual(errors, [])
+        self.assertEqual(
+            videos,
+            [
+                {
+                    "filename": "job-1_wan22_t2v_00001.mp4",
+                    "type": "s3_url",
+                    "data": "https://bucket.example.com/job-1_wan22_t2v_00001.mp4",
+                }
+            ],
+        )
+        mock_upload.assert_called_once_with(
+            "job-1", "job-1_wan22_t2v_00001.mp4", b"video-bytes"
+        )

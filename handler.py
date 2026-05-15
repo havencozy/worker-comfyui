@@ -83,6 +83,7 @@ DEFAULT_VIDEO_OPTIONS = {
     "motion_strength": 0.5,
     "strength": 0.6,
 }
+VIDEO_OUTPUT_EXTENSIONS = (".mp4", ".webm", ".mkv", ".mov", ".avi", ".gif")
 WAN22_REQUIRED_MODEL_FILES = (
     "diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
     "diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
@@ -602,13 +603,19 @@ def _set_video_sampler_fields(workflow, seed, options):
                 inputs["cfg"] = float(options["guidance_scale"])
 
 
-def _set_video_save_fields(workflow, mode, fps):
+def _video_filename_prefix(mode, job_id=None):
+    if job_id:
+        return f"video/{job_id}_wan22_{mode}"
+    return f"video/wan22_{mode}"
+
+
+def _set_video_save_fields(workflow, mode, fps, job_id=None):
     for node in workflow.values():
         inputs = node.get("inputs", {})
         class_type = node.get("class_type", "")
         if class_type == "SaveVideo":
             if "filename_prefix" in inputs:
-                inputs["filename_prefix"] = f"video/wan22_{mode}"
+                inputs["filename_prefix"] = _video_filename_prefix(mode, job_id)
             if "fps" in inputs:
                 inputs["fps"] = int(fps)
         if class_type == "CreateVideo" and "fps" in inputs:
@@ -749,6 +756,72 @@ def _collect_video_outputs(job_id, outputs):
                 continue
 
             videos.append({"filename": filename, "type": "s3_url", "data": s3_url})
+    return videos, errors
+
+
+def _comfy_output_dir():
+    return os.environ.get(
+        "COMFY_OUTPUT_DIR",
+        os.path.join(os.environ.get("COMFY_ROOT", "/comfyui"), "output"),
+    )
+
+
+def _iter_recent_video_paths(output_dir, since_epoch, filename_prefix=None):
+    normalized_prefix = None
+    search_dir = output_dir
+    if filename_prefix:
+        normalized_prefix = os.path.normpath(filename_prefix)
+        prefix_dir = os.path.dirname(normalized_prefix)
+        if prefix_dir:
+            search_dir = os.path.join(output_dir, prefix_dir)
+        normalized_prefix = os.path.basename(normalized_prefix)
+
+    if not os.path.isdir(search_dir):
+        return []
+
+    matches = []
+    for root, _dirs, files in os.walk(search_dir):
+        for filename in files:
+            if normalized_prefix and not filename.startswith(normalized_prefix):
+                continue
+            if not filename.lower().endswith(VIDEO_OUTPUT_EXTENSIONS):
+                continue
+
+            path = os.path.join(root, filename)
+            try:
+                modified_at = os.path.getmtime(path)
+            except OSError:
+                continue
+            if modified_at < since_epoch:
+                continue
+            matches.append((modified_at, path))
+
+    matches.sort(reverse=True)
+    return [path for _modified_at, path in matches]
+
+
+def _collect_recent_video_files(job_id, since_epoch, filename_prefix=None):
+    videos = []
+    errors = []
+    output_dir = _comfy_output_dir()
+    video_paths = _iter_recent_video_paths(output_dir, since_epoch, filename_prefix)
+
+    for path in video_paths:
+        filename = os.path.basename(path)
+        try:
+            with open(path, "rb") as video_file:
+                video_bytes = video_file.read()
+            s3_url = _upload_artifact_to_s3(job_id, filename, video_bytes)
+        except Exception as exc:
+            errors.append(f"Error uploading {filename} from output directory: {exc}")
+            continue
+
+        videos.append({"filename": filename, "type": "s3_url", "data": s3_url})
+
+    if not videos:
+        errors.append(
+            f"No recent video files found under {output_dir} for prefix {filename_prefix}"
+        )
     return videos, errors
 
 
@@ -1402,6 +1475,17 @@ def handler(job):
     input_images = validated_data.get("images")
     remote_images = validated_data.get("remote_images") or []
     selected_model = validated_data.get("selected_model")
+    video_meta = validated_data.get("meta", {})
+    video_mode = video_meta.get("mode")
+    video_filename_prefix = None
+    if video_mode in VIDEO_MODES:
+        video_filename_prefix = _video_filename_prefix(video_mode, job_id)
+        _set_video_save_fields(
+            workflow,
+            video_mode,
+            video_meta.get("fps", DEFAULT_VIDEO_OPTIONS["fps"]),
+            job_id=job_id,
+        )
 
     ok, model_error = _check_wan22_model_assets()
     if not ok:
@@ -1453,6 +1537,7 @@ def handler(job):
     prompt_id = None
     output_videos = []
     errors = []
+    job_started_at = time.time()
 
     try:
         # Establish WebSocket connection
@@ -1582,6 +1667,29 @@ def handler(job):
         print(f"worker-comfyui - Processing {len(outputs)} output nodes...")
         output_videos, output_errors = _collect_video_outputs(job_id, outputs)
         errors.extend(output_errors)
+        if not output_videos and video_filename_prefix:
+            output_keys = {
+                node_id: sorted((node_output or {}).keys())
+                for node_id, node_output in outputs.items()
+            }
+            print(
+                "worker-comfyui - No video artifacts found in history; "
+                f"history output keys: {output_keys}. Falling back to output directory scan."
+            )
+            fallback_videos, fallback_errors = _collect_recent_video_files(
+                job_id,
+                since_epoch=job_started_at - 5,
+                filename_prefix=video_filename_prefix,
+            )
+            output_videos.extend(fallback_videos)
+            if fallback_videos:
+                errors = [
+                    error
+                    for error in errors
+                    if not error.startswith("No recent video files found")
+                ]
+            else:
+                errors.extend(fallback_errors)
 
     except websocket.WebSocketException as e:
         print(f"worker-comfyui - WebSocket Error: {e}")
