@@ -89,6 +89,7 @@ DEFAULT_VIDEO_OPTIONS = {
     "strength": 0.6,
 }
 VIDEO_OUTPUT_EXTENSIONS = (".mp4", ".webm", ".mkv", ".mov", ".avi", ".gif")
+HISTORY_VIDEO_KEYS = ("videos", "gifs", "animated")
 WAN22_REQUIRED_MODEL_FILES = (
     "diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
     "diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
@@ -778,13 +779,63 @@ def _upload_artifact_to_s3(job_id, filename, artifact_bytes):
             os.remove(temp_file_path)
 
 
+def _history_value_key_summary(value, depth=0):
+    if isinstance(value, dict):
+        keys = sorted(str(key) for key in value.keys())
+        summary = {"type": "dict", "keys": keys}
+        media_fields = {}
+        for field in ("filename", "subfolder", "type", "format"):
+            if field in value:
+                media_fields[field] = value[field]
+        if media_fields:
+            summary["media_fields"] = media_fields
+        if depth < 4:
+            summary["children"] = {
+                str(key): _history_value_key_summary(child, depth + 1)
+                for key, child in value.items()
+            }
+        return summary
+
+    if isinstance(value, list):
+        item_summaries = [
+            _history_value_key_summary(item, depth + 1) for item in value
+        ]
+        return {
+            "type": "list",
+            "count": len(value),
+            "items": item_summaries,
+        }
+
+    return {"type": type(value).__name__}
+
+
+def _history_outputs_key_summary(outputs):
+    return {
+        str(node_id): _history_value_key_summary(node_output)
+        for node_id, node_output in (outputs or {}).items()
+    }
+
+
 def _collect_video_outputs(job_id, outputs):
     videos = []
     errors = []
+    print(
+        "worker-comfyui - Full history output key summary: "
+        + json.dumps(
+            _history_outputs_key_summary(outputs),
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+    )
     for node_id, node_output in outputs.items():
+        node_output = node_output or {}
         video_items = []
-        for key in ("videos", "gifs"):
+        for key in HISTORY_VIDEO_KEYS:
             video_items.extend(node_output.get(key, []))
+        for image_info in node_output.get("images", []):
+            filename = image_info.get("filename", "")
+            if filename.lower().endswith(VIDEO_OUTPUT_EXTENSIONS):
+                video_items.append(image_info)
 
         print(
             "worker-comfyui - History output node "
@@ -824,11 +875,22 @@ def _collect_video_outputs(job_id, outputs):
     return videos, errors
 
 
-def _comfy_output_dir():
-    return os.environ.get(
-        "COMFY_OUTPUT_DIR",
-        os.path.join(os.environ.get("COMFY_ROOT", "/comfyui"), "output"),
-    )
+def _comfy_output_dirs():
+    explicit_output_dir = os.environ.get("COMFY_OUTPUT_DIR")
+    if explicit_output_dir:
+        return [explicit_output_dir]
+
+    candidates = ["/comfyui/output"]
+    comfy_root = os.environ.get("COMFY_ROOT")
+    if comfy_root:
+        candidates.append(os.path.join(comfy_root, "output"))
+
+    output_dirs = []
+    for output_dir in candidates:
+        normalized = os.path.normpath(output_dir)
+        if normalized not in output_dirs:
+            output_dirs.append(normalized)
+    return output_dirs
 
 
 def _iter_recent_video_paths(output_dir, since_epoch, filename_prefix=None):
@@ -847,6 +909,13 @@ def _iter_recent_video_paths(output_dir, since_epoch, filename_prefix=None):
         f"filename_prefix={filename_prefix}, normalized_prefix={normalized_prefix}, "
         f"since_epoch={since_epoch:.3f}"
     )
+    if not os.path.isdir(search_dir) and search_dir != output_dir:
+        print(
+            "worker-comfyui - Video prefix directory does not exist; "
+            f"falling back to output directory scan: {search_dir}"
+        )
+        search_dir = output_dir
+
     if not os.path.isdir(search_dir):
         print(
             "worker-comfyui - Video output search directory does not exist: "
@@ -900,8 +969,20 @@ def _iter_recent_video_paths(output_dir, since_epoch, filename_prefix=None):
 def _collect_recent_video_files(job_id, since_epoch, filename_prefix=None):
     videos = []
     errors = []
-    output_dir = _comfy_output_dir()
-    video_paths = _iter_recent_video_paths(output_dir, since_epoch, filename_prefix)
+    output_dirs = _comfy_output_dirs()
+    print(
+        "worker-comfyui - Candidate ComfyUI output directories for video scan: "
+        f"{output_dirs}"
+    )
+    video_paths = []
+    scanned_output_dirs = []
+    for output_dir in output_dirs:
+        scanned_output_dirs.append(output_dir)
+        video_paths = _iter_recent_video_paths(
+            output_dir, since_epoch, filename_prefix
+        )
+        if video_paths:
+            break
 
     for path in video_paths:
         filename = os.path.basename(path)
@@ -922,7 +1003,8 @@ def _collect_recent_video_files(job_id, since_epoch, filename_prefix=None):
 
     if not videos:
         errors.append(
-            f"No recent video files found under {output_dir} for prefix {filename_prefix}"
+            f"No recent video files found under {', '.join(scanned_output_dirs)} "
+            f"for prefix {filename_prefix}"
         )
     return videos, errors
 

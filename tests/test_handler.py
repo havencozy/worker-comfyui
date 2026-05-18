@@ -593,6 +593,108 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(videos[0]["filename"], "out.mp4")
 
+    @patch("handler.get_image_data", return_value=b"video-bytes")
+    @patch(
+        "handler._upload_artifact_to_s3",
+        return_value="https://bucket.example.com/out.mp4",
+    )
+    def test_collect_video_outputs_from_history_animated(self, mock_upload, mock_get):
+        history_outputs = {
+            "61": {
+                "animated": [
+                    {
+                        "filename": "out.mp4",
+                        "subfolder": "video",
+                        "type": "output",
+                    }
+                ],
+                "images": [
+                    {
+                        "filename": "out.png",
+                        "subfolder": "video",
+                        "type": "output",
+                    }
+                ],
+            }
+        }
+
+        videos, errors = handler._collect_video_outputs("job-1", history_outputs)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(videos[0]["filename"], "out.mp4")
+        mock_get.assert_called_once_with("out.mp4", "video", "output")
+
+    def test_history_outputs_key_summary_includes_nested_output_keys_only(self):
+        summary = handler._history_outputs_key_summary(
+            {
+                "61": {
+                    "animated": [
+                        {
+                            "filename": "out.mp4",
+                            "subfolder": "video",
+                            "type": "output",
+                            "nested": {"foo": "bar"},
+                        }
+                    ],
+                    "images": [{"filename": "thumb.png", "type": "output"}],
+                }
+            }
+        )
+
+        node_summary = summary["61"]
+        self.assertEqual(node_summary["keys"], ["animated", "images"])
+        animated_summary = node_summary["children"]["animated"]
+        self.assertEqual(animated_summary["type"], "list")
+        self.assertEqual(animated_summary["count"], 1)
+        item_summary = animated_summary["items"][0]
+        self.assertEqual(
+            item_summary["keys"],
+            ["filename", "nested", "subfolder", "type"],
+        )
+        self.assertEqual(
+            item_summary["media_fields"],
+            {
+                "filename": "out.mp4",
+                "subfolder": "video",
+                "type": "output",
+            },
+        )
+        self.assertEqual(
+            item_summary["children"]["nested"]["keys"],
+            ["foo"],
+        )
+
+    @patch("handler.get_image_data", return_value=b"video-bytes")
+    @patch(
+        "handler._upload_artifact_to_s3",
+        return_value="https://bucket.example.com/out.mp4",
+    )
+    def test_collect_video_outputs_from_history_images_with_video_extension(
+        self, mock_upload, mock_get
+    ):
+        history_outputs = {
+            "61": {
+                "images": [
+                    {
+                        "filename": "out.mp4",
+                        "subfolder": "video",
+                        "type": "output",
+                    },
+                    {
+                        "filename": "thumb.png",
+                        "subfolder": "video",
+                        "type": "output",
+                    },
+                ]
+            }
+        }
+
+        videos, errors = handler._collect_video_outputs("job-1", history_outputs)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(videos[0]["filename"], "out.mp4")
+        mock_get.assert_called_once_with("out.mp4", "video", "output")
+
     @patch(
         "handler._upload_artifact_to_s3",
         return_value="https://bucket.example.com/job-1_wan22_t2v_00001.mp4",
@@ -629,3 +731,33 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         mock_upload.assert_called_once_with(
             "job-1", "job-1_wan22_t2v_00001.mp4", b"video-bytes"
         )
+
+    @patch(
+        "handler._upload_artifact_to_s3",
+        return_value="https://bucket.example.com/job-1_wan22_t2v_00001.mp4",
+    )
+    def test_collect_recent_video_file_prefers_comfyui_output_when_comfy_root_is_volume(
+        self, mock_upload
+    ):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            comfy_output = os.path.join(tmpdir, "comfyui-output")
+            volume_root = os.path.join(tmpdir, "runpod-volume")
+            os.makedirs(comfy_output)
+            os.makedirs(volume_root)
+            video_path = os.path.join(comfy_output, "job-1_wan22_t2v_00001.mp4")
+            with open(video_path, "wb") as video_file:
+                video_file.write(b"video-bytes")
+
+            with patch.dict(os.environ, {"COMFY_ROOT": volume_root}, clear=False):
+                with patch(
+                    "handler._comfy_output_dirs",
+                    return_value=[comfy_output, os.path.join(volume_root, "output")],
+                ):
+                    videos, errors = handler._collect_recent_video_files(
+                        "job-1",
+                        since_epoch=time.time() - 60,
+                        filename_prefix="video/job-1_wan22_t2v",
+                    )
+
+        self.assertEqual(errors, [])
+        self.assertEqual(videos[0]["filename"], "job-1_wan22_t2v_00001.mp4")
