@@ -35,6 +35,19 @@ curl -X POST \
   "https://api.runpod.ai/v2/${ENDPOINT_ID}/run"
 ```
 
+For a first RTX 4090 benchmark, start with the same 480p payload above and set these endpoint environment variables:
+
+```text
+COMFY_LOG_LEVEL=INFO
+COMFY_EXTRA_ARGS=--cuda-malloc --use-split-cross-attention
+```
+
+If the worker still takes several minutes, check the ComfyUI logs for model load/offload messages. The default Wan2.2 14B workflow uses separate high-noise and low-noise expert models, so a 24 GB GPU may still move model weights through system RAM. Test `--highvram` separately only after confirming it does not produce CUDA out-of-memory errors:
+
+```text
+COMFY_EXTRA_ARGS=--cuda-malloc --use-split-cross-attention --highvram
+```
+
 Check async job status:
 
 ```bash

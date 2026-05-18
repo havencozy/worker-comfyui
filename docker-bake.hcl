@@ -11,24 +11,24 @@ variable "RELEASE_VERSION" {
 }
 
 variable "COMFYUI_VERSION" {
-  default = "latest"
+  default = "v0.21.1"
 }
 
-# Global defaults for standard CUDA 12.6.3 images
+# Global defaults for standard CUDA 12.8.1 images
 variable "BASE_IMAGE" {
-  default = "nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04"
+  default = "nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04"
 }
 
 variable "CUDA_VERSION_FOR_COMFY" {
-  default = "12.6"
+  default = ""
 }
 
 variable "ENABLE_PYTORCH_UPGRADE" {
-  default = "false"
+  default = "true"
 }
 
 variable "PYTORCH_INDEX_URL" {
-  default = ""
+  default = "https://download.pytorch.org/whl/cu128"
 }
 
 variable "HUGGINGFACE_ACCESS_TOKEN" {
@@ -36,7 +36,7 @@ variable "HUGGINGFACE_ACCESS_TOKEN" {
 }
 
 group "default" {
-  targets = ["base", "sdxl", "sd3", "flux1-schnell", "flux1-dev", "flux1-dev-fp8", "flux2-dev", "wan2.2-14b", "z-image-turbo", "base-cuda12-8-1"]
+  targets = ["base", "wan2.2-volume", "sdxl", "sd3", "flux1-schnell", "flux1-dev", "flux1-dev-fp8", "flux2-dev", "wan2.2-14b", "z-image-turbo", "base-cuda12-8-1"]
 }
 
 target "base" {
@@ -53,6 +53,22 @@ target "base" {
     MODEL_TYPE = "base"
   }
   tags = ["${DOCKERHUB_REPO}/${DOCKERHUB_IMG}:${RELEASE_VERSION}-base"]
+}
+
+target "wan2.2-volume" {
+  context = "."
+  dockerfile = "Dockerfile"
+  target = "base"
+  platforms = ["linux/amd64"]
+  args = {
+    BASE_IMAGE = "${BASE_IMAGE}"
+    COMFYUI_VERSION = "${COMFYUI_VERSION}"
+    CUDA_VERSION_FOR_COMFY = "${CUDA_VERSION_FOR_COMFY}"
+    ENABLE_PYTORCH_UPGRADE = "${ENABLE_PYTORCH_UPGRADE}"
+    PYTORCH_INDEX_URL = "${PYTORCH_INDEX_URL}"
+    MODEL_TYPE = "none"
+  }
+  tags = ["${DOCKERHUB_REPO}/${DOCKERHUB_IMG}:${RELEASE_VERSION}-wan2.2-volume"]
 }
 
 target "sdxl" {

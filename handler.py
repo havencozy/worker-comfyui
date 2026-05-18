@@ -66,6 +66,11 @@ WORKFLOW_DIR = os.environ.get(
 
 WAN22_MODEL_NAME = "wan2.2-14b"
 VIDEO_MODES = {"t2v", "i2v", "r2v"}
+VIDEO_MODE_ALIASES = {
+    "wan22-t2v": "t2v",
+    "wan22-i2v": "i2v",
+    "wan22-flf2v": "r2v",
+}
 RESOLUTION_PRESETS = {"480p": 480, "720p": 720, "1080p": 1080}
 VIDEO_ASPECT_RATIOS = {
     "21:9": (21, 9),
@@ -280,9 +285,11 @@ def validate_input(job_input):
     if not isinstance(job_input, dict):
         return None, _error("VALIDATION_ERROR", "Input must be an object")
 
-    mode = job_input.get("mode")
+    raw_mode = job_input.get("mode")
+    mode = VIDEO_MODE_ALIASES.get(raw_mode, raw_mode)
     if mode in VIDEO_MODES:
-        return _build_video_mode_input(job_input, mode)
+        normalized_job_input = _normalize_video_mode_payload(job_input, mode)
+        return _build_video_mode_input(normalized_job_input, mode)
 
     if mode in {"t2i", "i2i"}:
         return None, _error(
@@ -292,7 +299,8 @@ def validate_input(job_input):
 
     return None, _error(
         "UNSUPPORTED_MODE",
-        "Missing or invalid 'mode'. Supported values: 't2v', 'i2v', 'r2v'",
+        "Missing or invalid 'mode'. Supported values: 't2v', 'i2v', 'r2v', "
+        "'wan22-t2v', 'wan22-i2v', 'wan22-flf2v'",
     )
 
 
@@ -309,6 +317,24 @@ def _load_workflow_template(path):
 
 def _error(code, message):
     return {"code": code, "message": message}
+
+
+def _normalize_video_mode_payload(job_input, mode):
+    normalized = dict(job_input)
+    normalized["mode"] = mode
+
+    if mode in {"i2v", "r2v"} and normalized.get("image") and not normalized.get(
+        "start_frame"
+    ):
+        normalized["start_frame"] = normalized["image"]
+
+    if mode == "r2v":
+        for alias in ("end_image", "last_image"):
+            if normalized.get(alias) and not normalized.get("end_frame"):
+                normalized["end_frame"] = normalized[alias]
+                break
+
+    return normalized
 
 
 def _wan22_model_roots():
@@ -420,6 +446,9 @@ def _normalize_video_options(job_input):
     guidance_scale = float(options["guidance_scale"])
     motion_strength = float(options["motion_strength"])
     strength = float(options["strength"])
+    length = raw_options.get("length")
+    if length is not None:
+        length = int(length)
 
     if fps < 8 or fps > 30:
         raise ValueError("'options.fps' must be between 8 and 30")
@@ -431,20 +460,30 @@ def _normalize_video_options(job_input):
         raise ValueError("'options.motion_strength' must be between 0 and 1")
     if strength < 0 or strength > 1:
         raise ValueError("'options.strength' must be between 0 and 1")
+    if length is not None and (length < 1 or length > 450):
+        raise ValueError("'options.length' must be between 1 and 450 frames")
 
-    return {
+    normalized = {
         "fps": fps,
         "steps": steps,
         "guidance_scale": guidance_scale,
         "motion_strength": motion_strength,
         "strength": strength,
     }
+    if length is not None:
+        normalized["length"] = length
+    return normalized
 
 
 def _normalize_seed(job_input):
-    if job_input.get("seed") is None:
+    raw_options = job_input.get("options") or {}
+    seed_value = job_input.get("seed")
+    if seed_value is None and isinstance(raw_options, dict):
+        seed_value = raw_options.get("seed")
+
+    if seed_value is None:
         return int(time.time_ns() % 2147483647)
-    seed = int(job_input["seed"])
+    seed = int(seed_value)
     if seed < 0 or seed > 2147483647:
         raise ValueError("'seed' must be between 0 and 2147483647")
     return seed
@@ -458,7 +497,11 @@ def _validate_video_request(job_input, mode):
         job_input.get("aspect_ratio", "auto"),
     )
     duration_sec = _resolve_duration_sec(job_input.get("duration", "auto"))
-    num_frames = _resolve_num_frames(duration_sec, options["fps"])
+    if options.get("length") is not None:
+        num_frames = options["length"]
+        duration_sec = round(num_frames / options["fps"], 3)
+    else:
+        num_frames = _resolve_num_frames(duration_sec, options["fps"])
     seed = _normalize_seed(job_input)
 
     warnings = []
@@ -531,6 +574,8 @@ def _validate_reference_placeholders(job_input, prompt):
 
 def _frame_assets_for_mode(job_input, mode, prompt):
     _validate_reference_placeholders(job_input, prompt)
+    start_frame_name = job_input.get("image_name") or "start_frame.png"
+    end_frame_name = job_input.get("end_image_name") or "end_frame.png"
 
     if mode == "t2v":
         warnings = []
@@ -546,21 +591,21 @@ def _frame_assets_for_mode(job_input, mode, prompt):
         warnings = []
         if job_input.get("end_frame"):
             warnings.append("END_FRAME_IGNORED_BY_I2V")
-        return [{"name": "start_frame.png", "image": start_frame}], [], warnings
+        return [{"name": start_frame_name, "image": start_frame}], [], warnings
 
     start_frame = job_input.get("start_frame")
     end_frame = job_input.get("end_frame")
     if start_frame and end_frame:
         return [
-            {"name": "start_frame.png", "image": start_frame},
-            {"name": "end_frame.png", "image": end_frame},
+            {"name": start_frame_name, "image": start_frame},
+            {"name": end_frame_name, "image": end_frame},
         ], [], []
 
     image_urls = job_input.get("image_urls") or []
     if len(image_urls) >= 2:
         return [], [
-            {"name": "start_frame.png", "url": image_urls[0]},
-            {"name": "end_frame.png", "url": image_urls[1]},
+            {"name": start_frame_name, "url": image_urls[0]},
+            {"name": end_frame_name, "url": image_urls[1]},
         ], []
 
     raise ValueError(
@@ -622,22 +667,24 @@ def _set_video_save_fields(workflow, mode, fps, job_id=None):
             inputs["fps"] = int(fps)
 
 
-def _set_video_load_image_fields(workflow, mode):
+def _set_video_load_image_fields(
+    workflow, mode, start_frame_name="start_frame.png", end_frame_name="end_frame.png"
+):
     load_images = [
         (node_id, node)
         for node_id, node in workflow.items()
         if node.get("class_type") == "LoadImage"
     ]
     if mode == "i2v" and load_images:
-        load_images[0][1].setdefault("inputs", {})["image"] = "start_frame.png"
+        load_images[0][1].setdefault("inputs", {})["image"] = start_frame_name
         return
     if mode == "r2v":
         for node_id, node in load_images:
             title = ((node.get("_meta") or {}).get("title", "")).lower()
             if "end" in title or "last" in title:
-                node.setdefault("inputs", {})["image"] = "end_frame.png"
+                node.setdefault("inputs", {})["image"] = end_frame_name
             else:
-                node.setdefault("inputs", {})["image"] = "start_frame.png"
+                node.setdefault("inputs", {})["image"] = start_frame_name
 
 
 def _build_video_mode_input(job_input, mode):
@@ -647,6 +694,8 @@ def _build_video_mode_input(job_input, mode):
             job_input, mode, normalized["prompt"]
         )
         workflow = _load_workflow_template(_video_workflow_path(mode))
+        start_frame_name = job_input.get("image_name") or "start_frame.png"
+        end_frame_name = job_input.get("end_image_name") or "end_frame.png"
 
         _set_prompt_fields(
             workflow,
@@ -665,7 +714,12 @@ def _build_video_mode_input(job_input, mode):
             normalized["options"],
         )
         _set_video_save_fields(workflow, mode, normalized["options"]["fps"])
-        _set_video_load_image_fields(workflow, mode)
+        _set_video_load_image_fields(
+            workflow,
+            mode,
+            start_frame_name=start_frame_name,
+            end_frame_name=end_frame_name,
+        )
 
         warnings = normalized["warnings"] + asset_warnings
         meta = {

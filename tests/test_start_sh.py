@@ -9,6 +9,7 @@ class TestStartScriptPythonEnvironments(unittest.TestCase):
     def test_comfyui_runs_with_comfy_workspace_venv(self):
         self.assertIn('COMFY_PYTHON="${COMFY_PYTHON:-/comfyui/.venv/bin/python}"', self.start_sh)
         self.assertIn('"$COMFY_PYTHON" -u /comfyui/main.py', self.start_sh)
+        self.assertIn('COMFY_EXTRA_ARGS', self.start_sh)
 
     def test_handler_runs_with_handler_venv(self):
         self.assertIn('HANDLER_PYTHON="${HANDLER_PYTHON:-/opt/venv/bin/python}"', self.start_sh)

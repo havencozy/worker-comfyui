@@ -131,6 +131,69 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertEqual(validated_data["meta"]["num_frames"], 120)
         self.assertEqual(validated_data["meta"]["warnings"], [])
 
+    def test_wan22_t2v_alias_builds_video_workflow(self):
+        input_data = {
+            "mode": "wan22-t2v",
+            "prompt": "neon dragon over a rainy skyline",
+            "resolution": "480p",
+            "aspect_ratio": "16:9",
+            "options": {"length": 81, "steps": 30, "seed": 42},
+        }
+
+        validated_data, error = handler.validate_input(input_data)
+
+        self.assertIsNone(error)
+        self.assertEqual(validated_data["meta"]["mode"], "t2v")
+        self.assertEqual(validated_data["meta"]["width"], 848)
+        self.assertEqual(validated_data["meta"]["height"], 480)
+        self.assertEqual(validated_data["meta"]["num_frames"], 81)
+        self.assertEqual(validated_data["meta"]["seed"], 42)
+        self.assertEqual(
+            validated_data["workflow"]["6"]["inputs"]["text"], input_data["prompt"]
+        )
+        self.assertEqual(validated_data["workflow"]["55"]["inputs"]["length"], 81)
+        self.assertEqual(validated_data["workflow"]["57"]["inputs"]["noise_seed"], 42)
+
+    def test_wan22_i2v_alias_accepts_image_alias(self):
+        input_data = {
+            "mode": "wan22-i2v",
+            "prompt": "add subtle cinematic motion",
+            "image": "data:image/png;base64,ZmFrZQ==",
+            "image_name": "portrait.png",
+        }
+
+        validated_data, error = handler.validate_input(input_data)
+
+        self.assertIsNone(error)
+        self.assertEqual(validated_data["meta"]["mode"], "i2v")
+        self.assertEqual(
+            validated_data["images"],
+            [{"name": "portrait.png", "image": input_data["image"]}],
+        )
+        self.assertEqual(
+            validated_data["workflow"]["56"]["inputs"]["image"], "portrait.png"
+        )
+
+    def test_wan22_flf2v_alias_accepts_image_and_end_image_aliases(self):
+        input_data = {
+            "mode": "wan22-flf2v",
+            "prompt": "move from first frame to last frame",
+            "image": "data:image/png;base64,c3RhcnQ=",
+            "end_image": "data:image/png;base64,ZW5k",
+        }
+
+        validated_data, error = handler.validate_input(input_data)
+
+        self.assertIsNone(error)
+        self.assertEqual(validated_data["meta"]["mode"], "r2v")
+        self.assertEqual(
+            validated_data["images"],
+            [
+                {"name": "start_frame.png", "image": input_data["image"]},
+                {"name": "end_frame.png", "image": input_data["end_image"]},
+            ],
+        )
+
     def test_valid_json_string_input_for_t2v(self):
         input_data = '{"mode": "t2v", "prompt": "clean cinematic motion"}'
 

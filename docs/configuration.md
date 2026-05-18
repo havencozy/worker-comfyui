@@ -9,6 +9,7 @@ This document outlines the environment variables available for configuring the `
 | `REFRESH_WORKER`     | When `true`, the worker pod will stop after each completed job to ensure a clean state for the next job. See the [RunPod documentation](https://docs.runpod.io/docs/handler-additional-controls#refresh-worker) for details. | `false` |
 | `SERVE_API_LOCALLY`  | When `true`, enables a local HTTP server simulating the RunPod environment for development and testing. See the [Development Guide](development.md#local-api) for more details.                                              | `false` |
 | `COMFY_ORG_API_KEY`  | Comfy.org API key to enable ComfyUI API Nodes. If set, it is sent with each workflow; clients can override per request via `input.api_key_comfy_org`.                                                                        | –       |
+| `COMFY_EXTRA_ARGS`   | Optional extra flags appended to the ComfyUI launch command. Useful for GPU-specific tuning such as `--cuda-malloc --use-split-cross-attention`. Use one variable change at a time when benchmarking. | – |
 | `WAN22_T2V_WORKFLOW_PATH` | Override path for the Wan2.2 14B T2V API-format workflow. | `/workflows/wan2_2_14b_t2v.json` |
 | `WAN22_I2V_WORKFLOW_PATH` | Override path for the Wan2.2 14B I2V API-format workflow. | `/workflows/wan2_2_14b_i2v.json` |
 | `WAN22_R2V_WORKFLOW_PATH` | Override path for the Wan2.2 14B FLF2V API-format workflow. | `/workflows/wan2_2_14b_flf2v.json` |
@@ -20,7 +21,7 @@ When building with `--build-arg MODEL_TYPE=none`, the image does not download Wa
 
 | Environment Variable   | Description                                                                                                                                                      | Default |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| `COMFY_LOG_LEVEL`      | Controls ComfyUI's internal logging verbosity. Options: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. Use `DEBUG` for troubleshooting, `INFO` for production. | `DEBUG` |
+| `COMFY_LOG_LEVEL`      | Controls ComfyUI's internal logging verbosity. Options: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. Use `DEBUG` for troubleshooting, `INFO` for production. | `INFO` |
 | `NETWORK_VOLUME_DEBUG` | Enable detailed network volume diagnostics in worker logs. Useful for debugging model path issues. See [Network Volumes & Model Paths](network-volumes.md).      | `false` |
 
 ## Debugging Configuration

@@ -5,16 +5,38 @@ from pathlib import Path
 class TestDockerfileRunpodBuildDefaults(unittest.TestCase):
     def setUp(self):
         self.dockerfile = Path("Dockerfile").read_text()
+        self.docker_bake = Path("docker-bake.hcl").read_text()
 
-    def test_plain_docker_build_uses_cuda_126_comfy_defaults(self):
-        self.assertIn("ARG CUDA_VERSION_FOR_COMFY=12.6", self.dockerfile)
+    def test_plain_docker_build_uses_cuda_128_comfy_defaults(self):
+        self.assertIn("ARG COMFYUI_VERSION=v0.21.1", self.dockerfile)
+        self.assertIn('default = "v0.21.1"', self.docker_bake)
         self.assertIn(
-            "ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu126",
+            "ARG BASE_IMAGE=nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04",
+            self.dockerfile,
+        )
+        self.assertIn("ARG CUDA_VERSION_FOR_COMFY=", self.dockerfile)
+        self.assertIn("ARG ENABLE_PYTORCH_UPGRADE=true", self.dockerfile)
+        self.assertIn(
+            "ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu128",
             self.dockerfile,
         )
 
     def test_build_fails_if_torch_is_not_importable(self):
         self.assertIn('/comfyui/.venv/bin/python -c "import torch', self.dockerfile)
+
+    def test_installs_handler_dependencies_from_requirements_before_app_code(self):
+        self.assertIn("COPY requirements.txt ./", self.dockerfile)
+        self.assertIn("RUN uv pip install -r requirements.txt", self.dockerfile)
+        self.assertLess(
+            self.dockerfile.index("RUN uv pip install -r requirements.txt"),
+            self.dockerfile.index("ADD src/start.sh"),
+        )
+
+    def test_bake_has_wan22_volume_target_without_model_download_stage(self):
+        self.assertIn('target "wan2.2-volume"', self.docker_bake)
+        self.assertIn('target = "base"', self.docker_bake)
+        self.assertIn('MODEL_TYPE = "none"', self.docker_bake)
+        self.assertIn('-wan2.2-volume', self.docker_bake)
 
     def test_installs_comfyui_boot_dependencies(self):
         dockerfile = self.dockerfile.lower()

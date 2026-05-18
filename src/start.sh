@@ -68,22 +68,38 @@ comfy-manager-set-mode offline || echo "worker-comfyui - Could not set ComfyUI-M
 
 echo "worker-comfyui: Starting ComfyUI"
 
-# Allow operators to tweak verbosity; default is DEBUG.
-: "${COMFY_LOG_LEVEL:=DEBUG}"
+# Allow operators to tweak verbosity; default is INFO for production video runs.
+: "${COMFY_LOG_LEVEL:=INFO}"
 
 # PID file used by the handler to detect if ComfyUI is still running
 COMFY_PID_FILE="/tmp/comfyui.pid"
 
+start_comfyui() {
+    local -a comfy_args
+    comfy_args=("$@")
+    comfy_args+=("--disable-auto-launch" "--disable-metadata" "--verbose" "${COMFY_LOG_LEVEL}" "--log-stdout")
+
+    if [ -n "${COMFY_EXTRA_ARGS:-}" ]; then
+        # Split operator-provided flags such as:
+        # COMFY_EXTRA_ARGS="--cuda-malloc --use-split-cross-attention"
+        local -a extra_args
+        read -r -a extra_args <<< "${COMFY_EXTRA_ARGS}"
+        comfy_args+=("${extra_args[@]}")
+        echo "worker-comfyui: Applying COMFY_EXTRA_ARGS: ${COMFY_EXTRA_ARGS}"
+    fi
+
+    "$COMFY_PYTHON" -u /comfyui/main.py "${comfy_args[@]}" &
+    echo $! > "$COMFY_PID_FILE"
+}
+
 # Serve the API and don't shutdown the container
 if [ "$SERVE_API_LOCALLY" == "true" ]; then
-    "$COMFY_PYTHON" -u /comfyui/main.py --disable-auto-launch --disable-metadata --listen --verbose "${COMFY_LOG_LEVEL}" --log-stdout &
-    echo $! > "$COMFY_PID_FILE"
+    start_comfyui --listen
 
     echo "worker-comfyui: Starting RunPod Handler"
     "$HANDLER_PYTHON" -u /handler.py --rp_serve_api --rp_api_host=0.0.0.0
 else
-    "$COMFY_PYTHON" -u /comfyui/main.py --disable-auto-launch --disable-metadata --verbose "${COMFY_LOG_LEVEL}" --log-stdout &
-    echo $! > "$COMFY_PID_FILE"
+    start_comfyui
 
     echo "worker-comfyui: Starting RunPod Handler"
     "$HANDLER_PYTHON" -u /handler.py
