@@ -24,6 +24,13 @@ class TestDockerfileRunpodBuildDefaults(unittest.TestCase):
     def test_build_fails_if_torch_is_not_importable(self):
         self.assertIn('/comfyui/.venv/bin/python -c "import torch', self.dockerfile)
 
+    def test_comfy_install_uses_posix_sh_compatible_syntax(self):
+        self.assertNotIn("set +o pipefail", self.dockerfile)
+        self.assertIn(
+            'RUN if [ -n "${CUDA_VERSION_FOR_COMFY}" ]; then',
+            self.dockerfile,
+        )
+
     def test_installs_handler_dependencies_from_requirements_before_app_code(self):
         self.assertIn("COPY requirements.txt ./", self.dockerfile)
         self.assertIn("RUN uv pip install -r requirements.txt", self.dockerfile)
