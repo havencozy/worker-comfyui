@@ -624,6 +624,33 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertEqual(videos[0]["filename"], "out.mp4")
         mock_get.assert_called_once_with("out.mp4", "video", "output")
 
+    @patch("handler.get_image_data", return_value=b"video-bytes")
+    @patch(
+        "handler._upload_artifact_to_s3",
+        return_value="https://bucket.example.com/out.mp4",
+    )
+    def test_collect_video_outputs_skips_animated_boolean_flag(
+        self, mock_upload, mock_get
+    ):
+        history_outputs = {
+            "61": {
+                "animated": [True],
+                "images": [
+                    {
+                        "filename": "out.mp4",
+                        "subfolder": "video",
+                        "type": "output",
+                    }
+                ],
+            }
+        }
+
+        videos, errors = handler._collect_video_outputs("job-1", history_outputs)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(videos[0]["filename"], "out.mp4")
+        mock_get.assert_called_once_with("out.mp4", "video", "output")
+
     def test_history_outputs_key_summary_includes_nested_output_keys_only(self):
         summary = handler._history_outputs_key_summary(
             {

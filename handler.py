@@ -816,6 +816,30 @@ def _history_outputs_key_summary(outputs):
     }
 
 
+def _iter_history_media_items(node_id, node_output, key):
+    raw_items = node_output.get(key, [])
+    if isinstance(raw_items, dict):
+        raw_items = [raw_items]
+    if not isinstance(raw_items, list):
+        print(
+            "worker-comfyui - Skipping non-list history output key: "
+            f"node={node_id}, key={key}, type={type(raw_items).__name__}"
+        )
+        return []
+
+    media_items = []
+    for index, item in enumerate(raw_items):
+        if not isinstance(item, dict):
+            print(
+                "worker-comfyui - Skipping non-object history output item: "
+                f"node={node_id}, key={key}, index={index}, "
+                f"type={type(item).__name__}, value={item}"
+            )
+            continue
+        media_items.append(item)
+    return media_items
+
+
 def _collect_video_outputs(job_id, outputs):
     videos = []
     errors = []
@@ -831,8 +855,8 @@ def _collect_video_outputs(job_id, outputs):
         node_output = node_output or {}
         video_items = []
         for key in HISTORY_VIDEO_KEYS:
-            video_items.extend(node_output.get(key, []))
-        for image_info in node_output.get("images", []):
+            video_items.extend(_iter_history_media_items(node_id, node_output, key))
+        for image_info in _iter_history_media_items(node_id, node_output, "images"):
             filename = image_info.get("filename", "")
             if filename.lower().endswith(VIDEO_OUTPUT_EXTENSIONS):
                 video_items.append(image_info)
