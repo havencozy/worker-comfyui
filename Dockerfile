@@ -1,5 +1,5 @@
 # Build argument for base image selection
-ARG BASE_IMAGE=runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404
+ARG BASE_IMAGE=nvidia/cuda:13.0.0-cudnn-runtime-ubuntu24.04
 
 # Stage 1: Base image with common dependencies
 FROM ${BASE_IMAGE} AS base
@@ -7,8 +7,8 @@ FROM ${BASE_IMAGE} AS base
 # Build arguments for this stage with sensible defaults for standalone builds
 ARG COMFYUI_VERSION=v0.21.1
 ARG CUDA_VERSION_FOR_COMFY=
-ARG ENABLE_PYTORCH_UPGRADE=false
-ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu128
+ARG ENABLE_PYTORCH_UPGRADE=true
+ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu130
 
 # Prevents prompts from packages asking for user input during installation
 ENV DEBIAN_FRONTEND=noninteractive

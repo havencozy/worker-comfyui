@@ -7,17 +7,17 @@ class TestDockerfileRunpodBuildDefaults(unittest.TestCase):
         self.dockerfile = Path("Dockerfile").read_text()
         self.docker_bake = Path("docker-bake.hcl").read_text()
 
-    def test_plain_docker_build_uses_cuda_128_comfy_defaults(self):
+    def test_plain_docker_build_uses_cuda_130_comfy_defaults(self):
         self.assertIn("ARG COMFYUI_VERSION=v0.21.1", self.dockerfile)
         self.assertIn('default = "v0.21.1"', self.docker_bake)
         self.assertIn(
-            "ARG BASE_IMAGE=nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04",
+            "ARG BASE_IMAGE=nvidia/cuda:13.0.0-cudnn-runtime-ubuntu24.04",
             self.dockerfile,
         )
         self.assertIn("ARG CUDA_VERSION_FOR_COMFY=", self.dockerfile)
         self.assertIn("ARG ENABLE_PYTORCH_UPGRADE=true", self.dockerfile)
         self.assertIn(
-            "ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu128",
+            "ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu130",
             self.dockerfile,
         )
 
