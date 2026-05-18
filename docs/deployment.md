@@ -12,13 +12,12 @@ This is the simplest method if the official images meet your needs.
 - In the dialog, configure:
   - Template Name: `worker-comfyui` (or your preferred name)
   - Template Type: serverless (change template type to "serverless")
-  - Container Image: Use one of the official tags, e.g., `runpod/worker-comfyui:<version>-sd3`. (Refer to the main [README.md](../README.md#available-docker-images) for available image tags and the current version).
+  - Container Image: Use a Wan2.2 video tag, e.g., `runpod/worker-comfyui:<version>-wan2.2-volume` for Network Volume models or `runpod/worker-comfyui:<version>-wan2.2-14b` for baked models. (Refer to the main [README.md](../README.md#available-docker-images) for available image tags and the current version).
   - Container Registry Credentials: Leave as default (images are public).
   - Container Disk: Adjust based on the chosen image tag, see [GPU Recommendations](#gpu-recommendations).
   - (optional) Environment Variables: Configure S3 or other settings (see [Configuration Guide](configuration.md)).
-    - For Flux2 with a Network Volume, set `COMFY_ROOT=/runpod-volume` after preloading the model files under `models/...` on the volume. See [Preparing Flux2 Models on a Network Volume](network-volumes.md#preparing-flux2-models-on-a-network-volume).
     - For Wan2.2 video with a Network Volume, build with `MODEL_TYPE=none`, preload the model files under `models/...` on the volume, and attach that volume to the endpoint. See [Preparing Wan2.2 14B Video Models on a Network Volume](network-volumes.md#preparing-wan22-14b-video-models-on-a-network-volume).
-    - Note: If you don't configure S3, image workflows can return images as base64. Wan2.2 video workflows require S3-compatible upload configuration because video artifacts are returned as `s3_url`. If models on your network volume are not being detected, see [Network Volumes & Model Paths](network-volumes.md) for troubleshooting steps.
+    - Wan2.2 video workflows require S3-compatible upload configuration because video artifacts are returned as `s3_url`. If models on your network volume are not being detected, see [Network Volumes & Model Paths](network-volumes.md) for troubleshooting steps.
 - Click on `Save Template`
 
 ### Create your endpoint
@@ -43,11 +42,9 @@ This is the simplest method if the official images meet your needs.
 
 | Model                     | Image Tag Suffix | Minimum VRAM Required | Recommended Container Size |
 | ------------------------- | ---------------- | --------------------- | -------------------------- |
-| Stable Diffusion XL       | `sdxl`           | 8 GB                  | 15 GB                      |
-| Stable Diffusion 3 Medium | `sd3`            | 5 GB                  | 20 GB                      |
-| FLUX.1 Schnell            | `flux1-schnell`  | 24 GB                 | 30 GB                      |
-| FLUX.1 dev                | `flux1-dev`      | 24 GB                 | 30 GB                      |
-| Base (No models)          | `base`           | N/A                   | 5 GB                       |
+| Wan2.2 14B video, volume models | `wan2.2-volume` | 24 GB+ | 10 GB plus attached Network Volume |
+| Wan2.2 14B video, baked models | `wan2.2-14b` | 24 GB+ | 80 GB+ |
+| Base video worker, no models | `base` | N/A | 10 GB |
 
 _Note: Container sizes are approximate and might vary slightly. Custom images will vary based on included models/nodes._
 

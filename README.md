@@ -36,11 +36,8 @@ This project runs curated ComfyUI Wan2.2 video generation workflows as a serverl
 These images are available on Docker Hub under `runpod/worker-comfyui`:
 
 - **`runpod/worker-comfyui:<version>-base`**: Clean ComfyUI install with no models.
-- **`runpod/worker-comfyui:<version>-flux1-schnell`**: Includes checkpoint, text encoders, and VAE for [FLUX.1 schnell](https://huggingface.co/black-forest-labs/FLUX.1-schnell).
-- **`runpod/worker-comfyui:<version>-flux1-dev`**: Includes checkpoint, text encoders, and VAE for [FLUX.1 dev](https://huggingface.co/black-forest-labs/FLUX.1-dev).
+- **`runpod/worker-comfyui:<version>-wan2.2-volume`**: Wan2.2 video worker with no baked models, intended for Network Volume model mounts.
 - **`runpod/worker-comfyui:<version>-wan2.2-14b`**: Includes Wan2.2 14B T2V/I2V diffusion models, text encoder, and VAE for video generation.
-- **`runpod/worker-comfyui:<version>-sdxl`**: Includes checkpoint and VAEs for [Stable Diffusion XL](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0).
-- **`runpod/worker-comfyui:<version>-sd3`**: Includes checkpoint for [Stable Diffusion 3 medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium).
 
 Replace `<version>` with the current release tag, check the [releases page](https://github.com/runpod-workers/worker-comfyui/releases) for the latest version.
 
@@ -76,9 +73,9 @@ Use the `/runsync` endpoint for synchronous requests that wait for the job to co
 
 Supported modes:
 
-- `t2v`: text-to-video using Wan2.2 14B T2V.
-- `i2v`: image-to-video using Wan2.2 14B I2V. Requires `start_frame` as an HTTP(S) URL, data URI, or base64 string.
-- `r2v`: first-last-frame video using Wan2.2 14B FLF2V. Requires `start_frame` and `end_frame`, or `image_urls[0]` and `image_urls[1]`.
+- `t2v` / `wan22-t2v`: text-to-video using Wan2.2 14B T2V.
+- `i2v` / `wan22-i2v`: image-to-video using Wan2.2 14B I2V. Requires `start_frame` as a data URI or base64 string.
+- `r2v` / `wan22-flf2v`: first-last-frame video using Wan2.2 14B FLF2V. Requires `start_frame` and `end_frame`, or `image_urls[0]` and `image_urls[1]`.
 
 Wan2.2 T2V/I2V/FLF2V outputs silent videos. `generate_audio=true` is accepted but returns `AUDIO_NOT_SUPPORTED_BY_WORKFLOW` in `meta.warnings`.
 
@@ -86,24 +83,28 @@ The following fields are supported within the `input` object:
 
 | Field Path | Type | Required | Description |
 | ---------- | ---- | -------- | ----------- |
-| `input.mode` | String | Yes | Supported values: `t2v`, `i2v`, `r2v`. |
+| `input.mode` | String | Yes | Supported values: `t2v`, `i2v`, `r2v`; aliases: `wan22-t2v`, `wan22-i2v`, `wan22-flf2v`. |
 | `input.prompt` | String | Yes | Positive prompt injected into the selected Wan2.2 workflow. |
 | `input.negative_prompt` | String | No | Negative prompt, defaults to an empty string. |
 | `input.resolution` | String | No | `480p`, `720p`, or `1080p`. Defaults to `720p`. |
-| `input.duration` | String or Integer | No | `auto` or integer seconds from `4` to `15`. `auto` means 5 seconds. |
+| `input.duration` | String or Integer | No | `auto` or integer seconds from `4` to `15`. `auto` means 5 seconds. Ignored when `input.options.length` is set. |
 | `input.aspect_ratio` | String | No | `auto`, `21:9`, `16:9`, `4:3`, `1:1`, `3:4`, or `9:16`. `auto` maps to `16:9`. |
 | `input.seed` | Integer | No | Sampler seed from `0` to `2147483647`. |
 | `input.generate_audio` | Boolean | No | Accepted for API compatibility, but Wan2.2 T2V/I2V/FLF2V does not generate audio. |
-| `input.start_frame` | String | `i2v`, `r2v` alternative | HTTP(S) URL, data URI, or base64 frame. |
-| `input.end_frame` | String | `r2v` alternative | HTTP(S) URL, data URI, or base64 frame. |
+| `input.start_frame` | String | `i2v`, `r2v` alternative | Data URI or base64 frame. Use `image_urls` for remote HTTP(S) frames. |
+| `input.end_frame` | String | `r2v` alternative | Data URI or base64 frame. Use `image_urls` for remote HTTP(S) frames. |
+| `input.start_frame_name` | String | No | Filename used when uploading `start_frame`. Defaults to `start_frame.png`. |
+| `input.end_frame_name` | String | No | Filename used when uploading `end_frame`. Defaults to `end_frame.png`. |
 | `input.image_urls` | Array | `r2v` alternative | First two image URLs are used as start/end frames when `start_frame` and `end_frame` are not supplied. |
-| `input.video_urls` | Array | No | Validated for shape only; video references are not consumed in this Wan2.2 FLF2V deployment. |
-| `input.audio_urls` | Array | No | Validated for shape only; audio references are not consumed in this Wan2.2 FLF2V deployment. |
+| `input.video_urls` | Array | No | Not consumed in this Wan2.2 FLF2V deployment. `@VideoN` prompt references are rejected. |
+| `input.audio_urls` | Array | No | Not consumed in this Wan2.2 FLF2V deployment. `@AudioN` prompt references are rejected. |
+| `input.comfy_org_api_key` / `input.api_key_comfy_org` | String | No | Optional per-request Comfy.org API key override for workflows that use ComfyUI API Nodes. |
 | `input.options.fps` | Integer | No | `8..30`, defaults to `24`. |
-| `input.options.steps` | Integer | No | `10..80`, defaults to `30`. |
-| `input.options.guidance_scale` | Number | No | `1..20`, defaults to `7.5`. |
+| `input.options.steps` | Integer | No | `10..80`, defaults to `30`. Wan2.2 dual samplers split this into high-noise and low-noise ranges. |
+| `input.options.guidance_scale` | Number | No | `1..20`, defaults to `7.5`; maps to sampler `cfg`. |
 | `input.options.motion_strength` | Number | No | `0..1`, defaults to `0.5`. |
 | `input.options.strength` | Number | No | `0..1`, defaults to `0.6`. |
+| `input.options.length` | Integer | No | Direct frame count override, `1..450`. When set, `duration_sec = length / fps`. |
 
 ### Output
 
@@ -200,7 +201,7 @@ To enable SSH access to the worker, set the `PUBLIC_KEY` environment variable to
 ## Further Documentation
 
 - **[Deployment Guide](docs/deployment.md):** Detailed steps for deploying on RunPod.
-- **[API Testing Guide](docs/api-testing.md):** RunPod curl commands for Wan2.2 video generation and legacy image payloads.
+- **[API Testing Guide](docs/api-testing.md):** RunPod curl commands for Wan2.2 video generation.
 - **[Configuration Guide](docs/configuration.md):** Full list of environment variables (including S3 setup).
 - **[Network Volumes & Model Paths](docs/network-volumes.md):** RunPod Network Volume layout and `wget` commands for preloading Wan2.2 models when building with `MODEL_TYPE=none`.
 - **[Customization Guide](docs/customization.md):** Adding custom models and nodes (Network Volumes, Docker builds).

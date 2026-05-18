@@ -121,58 +121,6 @@ def _refresh_runtime_config():
 
 _refresh_runtime_config()
 
-# Built-in custom API workflow templates (override via env if needed)
-FLUX2_T2I_WORKFLOW_PATH = os.environ.get(
-    "FLUX2_T2I_WORKFLOW_PATH", os.path.join(WORKFLOW_DIR, "flux2_t2i.json")
-)
-FLUX2_I2I_WORKFLOW_PATH = os.environ.get(
-    "FLUX2_I2I_WORKFLOW_PATH", os.path.join(WORKFLOW_DIR, "flux2_i2i.json")
-)
-
-ASPECT_RATIO_PRESETS = {
-    "1:1": (1024, 1024),
-    "16:9": (1344, 768),
-    "9:16": (768, 1344),
-    "4:3": (1152, 896),
-    "3:4": (896, 1152),
-    "3:2": (1216, 832),
-    "2:3": (832, 1216),
-}
-
-# Presets for quickly switching Flux model assets without changing workflow files.
-# You can override/extend this map via FLUX_MODEL_PRESETS_JSON env var.
-DEFAULT_FLUX_MODEL_PRESETS = {
-    "flux2-dev": {
-        "unet_name": "flux2_dev_fp8mixed.safetensors",
-        "clip_name": "mistral_3_small_flux2_bf16.safetensors",
-        "vae_name": "flux2-vae.safetensors",
-    },
-    "flux2-schnell": {
-        "unet_name": "flux2_schnell_fp8mixed.safetensors",
-        "clip_name": "mistral_3_small_flux2_bf16.safetensors",
-        "vae_name": "flux2-vae.safetensors",
-    },
-}
-
-# Runtime download manifest (used by API call preflight: check model -> download if missing)
-# Extend/override with FLUX_MODEL_ASSETS_JSON env.
-DEFAULT_FLUX_MODEL_ASSETS = {
-    "flux2-dev": [
-        {
-            "path": "models/clip/mistral_3_small_flux2_bf16.safetensors", 
-            "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/text_encoders/mistral_3_small_flux2_bf16.safetensors",
-        },
-        {
-            "path": "models/unet/flux2_dev_fp8mixed.safetensors",
-            "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/diffusion_models/flux2_dev_fp8mixed.safetensors",
-        },
-        {
-            "path": "models/vae/flux2-vae.safetensors",
-            "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors",
-        }
-    ]
-}
-
 # ---------------------------------------------------------------------------
 # Helper: quick reachability probe of ComfyUI HTTP endpoint (port 8188)
 # ---------------------------------------------------------------------------
@@ -292,12 +240,6 @@ def validate_input(job_input):
         normalized_job_input = _normalize_video_mode_payload(job_input, mode)
         return _build_video_mode_input(normalized_job_input, mode)
 
-    if mode in {"t2i", "i2i"}:
-        return None, _error(
-            "UNSUPPORTED_MODE",
-            "This deployment supports video modes only: 't2v', 'i2v', 'r2v'",
-        )
-
     return None, _error(
         "UNSUPPORTED_MODE",
         "Missing or invalid 'mode'. Supported values: 't2v', 'i2v', 'r2v', "
@@ -323,18 +265,6 @@ def _error(code, message):
 def _normalize_video_mode_payload(job_input, mode):
     normalized = dict(job_input)
     normalized["mode"] = mode
-
-    if mode in {"i2v", "r2v"} and normalized.get("image") and not normalized.get(
-        "start_frame"
-    ):
-        normalized["start_frame"] = normalized["image"]
-
-    if mode == "r2v":
-        for alias in ("end_image", "last_image"):
-            if normalized.get(alias) and not normalized.get("end_frame"):
-                normalized["end_frame"] = normalized[alias]
-                break
-
     return normalized
 
 
@@ -575,8 +505,8 @@ def _validate_reference_placeholders(job_input, prompt):
 
 def _frame_assets_for_mode(job_input, mode, prompt):
     _validate_reference_placeholders(job_input, prompt)
-    start_frame_name = job_input.get("image_name") or "start_frame.png"
-    end_frame_name = job_input.get("end_image_name") or "end_frame.png"
+    start_frame_name = job_input.get("start_frame_name") or "start_frame.png"
+    end_frame_name = job_input.get("end_frame_name") or "end_frame.png"
 
     if mode == "t2v":
         warnings = []
@@ -635,18 +565,33 @@ def _set_video_dimensions_and_length(workflow, width, height, num_frames):
 
 
 def _set_video_sampler_fields(workflow, seed, options):
+    total_steps = int(options["steps"])
+    split_step = total_steps // 2
+
     for node in workflow.values():
         inputs = node.get("inputs", {})
         class_type = node.get("class_type", "")
+        title = str((node.get("_meta") or {}).get("title", "")).lower()
         if class_type in {"KSampler", "KSamplerAdvanced"}:
             if "seed" in inputs:
                 inputs["seed"] = int(seed)
             if "noise_seed" in inputs:
                 inputs["noise_seed"] = int(seed)
             if "steps" in inputs:
-                inputs["steps"] = int(options["steps"])
+                inputs["steps"] = total_steps
             if "cfg" in inputs:
                 inputs["cfg"] = float(options["guidance_scale"])
+            if class_type == "KSamplerAdvanced":
+                if "high noise" in title:
+                    if "start_at_step" in inputs:
+                        inputs["start_at_step"] = 0
+                    if "end_at_step" in inputs:
+                        inputs["end_at_step"] = split_step
+                elif "low noise" in title:
+                    if "start_at_step" in inputs:
+                        inputs["start_at_step"] = split_step
+                    if "end_at_step" in inputs:
+                        inputs["end_at_step"] = 10000
 
 
 def _video_filename_prefix(mode, job_id=None):
@@ -695,8 +640,8 @@ def _build_video_mode_input(job_input, mode):
             job_input, mode, normalized["prompt"]
         )
         workflow = _load_workflow_template(_video_workflow_path(mode))
-        start_frame_name = job_input.get("image_name") or "start_frame.png"
-        end_frame_name = job_input.get("end_image_name") or "end_frame.png"
+        start_frame_name = job_input.get("start_frame_name") or "start_frame.png"
+        end_frame_name = job_input.get("end_frame_name") or "end_frame.png"
 
         _set_prompt_fields(
             workflow,
@@ -739,6 +684,8 @@ def _build_video_mode_input(job_input, mode):
             "workflow": workflow,
             "images": images,
             "remote_images": remote_images,
+            "comfy_org_api_key": job_input.get("comfy_org_api_key")
+            or job_input.get("api_key_comfy_org"),
             "meta": meta,
         }, None
     except RuntimeError as exc:
@@ -1033,20 +980,6 @@ def _collect_recent_video_files(job_id, since_epoch, filename_prefix=None):
     return videos, errors
 
 
-def _resolve_dimensions(
-    aspect_ratio, width, height, default_width=1024, default_height=1024
-):
-    if width and height:
-        return int(width), int(height)
-
-    if aspect_ratio:
-        preset = ASPECT_RATIO_PRESETS.get(str(aspect_ratio).strip())
-        if preset:
-            return preset
-
-    return default_width, default_height
-
-
 def _set_prompt_fields(workflow, prompt=None, negative_prompt=None):
     for node in workflow.values():
         inputs = node.get("inputs", {})
@@ -1061,224 +994,6 @@ def _set_prompt_fields(workflow, prompt=None, negative_prompt=None):
             elif prompt is not None and "negative" not in title:
                 # Fallback for single prompt encoder graphs
                 inputs["text"] = prompt
-
-
-def _set_numeric_fields(workflow, width, height, count, options):
-    for node in workflow.values():
-        inputs = node.get("inputs", {})
-        class_type = node.get("class_type", "")
-
-        if width is not None and "width" in inputs:
-            inputs["width"] = int(width)
-        if height is not None and "height" in inputs:
-            inputs["height"] = int(height)
-        if count is not None and "batch_size" in inputs:
-            inputs["batch_size"] = int(count)
-
-        if "steps" in options and "steps" in inputs:
-            inputs["steps"] = int(options["steps"])
-
-        if "seed" in options:
-            if "noise_seed" in inputs:
-                inputs["noise_seed"] = int(options["seed"])
-            if "seed" in inputs:
-                inputs["seed"] = int(options["seed"])
-
-        if "cfg" in options:
-            if "cfg" in inputs:
-                inputs["cfg"] = float(options["cfg"])
-            if class_type == "FluxGuidance" and "guidance" in inputs:
-                inputs["guidance"] = float(options["cfg"])
-
-        if "denoise" in options and "denoise" in inputs:
-            inputs["denoise"] = float(options["denoise"])
-
-        if "sampler_name" in options and "sampler_name" in inputs:
-            inputs["sampler_name"] = options["sampler_name"]
-
-
-def _set_i2i_image_fields(workflow, image_name):
-    for node in workflow.values():
-        inputs = node.get("inputs", {})
-        class_type = node.get("class_type", "")
-        if class_type == "LoadImage" and "image" in inputs:
-            inputs["image"] = image_name
-
-
-def _load_model_presets():
-    raw = os.environ.get("FLUX_MODEL_PRESETS_JSON")
-    if not raw:
-        return DEFAULT_FLUX_MODEL_PRESETS
-    try:
-        parsed = json.loads(raw)
-        if isinstance(parsed, dict):
-            return parsed
-    except Exception:
-        pass
-    return DEFAULT_FLUX_MODEL_PRESETS
-
-
-def _load_model_assets():
-    raw = os.environ.get("FLUX_MODEL_ASSETS_JSON")
-    if not raw:
-        return DEFAULT_FLUX_MODEL_ASSETS
-    try:
-        parsed = json.loads(raw)
-        if isinstance(parsed, dict):
-            return parsed
-    except Exception:
-        pass
-    return DEFAULT_FLUX_MODEL_ASSETS
-
-
-def _download_file(url, destination, hf_token=None):
-    os.makedirs(os.path.dirname(destination), exist_ok=True)
-
-    headers = {}
-    if hf_token:
-        headers["Authorization"] = f"Bearer {hf_token}"
-
-    request = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(request, timeout=600) as response:
-        with open(destination, "wb") as out_file:
-            out_file.write(response.read())
-
-
-def _ensure_model_assets(model_name):
-    assets_by_model = _load_model_assets()
-    assets = assets_by_model.get(model_name)
-    if not assets:
-        return False, (
-            f"No runtime asset manifest found for model '{model_name}'. "
-            "Set FLUX_MODEL_ASSETS_JSON to configure download paths/urls."
-        )
-
-    comfy_root = os.environ.get("COMFY_ROOT", "/comfyui")
-    hf_token = os.environ.get("HUGGINGFACE_ACCESS_TOKEN") or os.environ.get(
-        "HF_TOKEN"
-    )
-
-    for asset in assets:
-        rel_path = asset.get("path")
-        url = asset.get("url")
-        if not rel_path or not url:
-            return False, f"Invalid asset entry for model '{model_name}': {asset}"
-
-        local_path = os.path.join(comfy_root, rel_path)
-        if os.path.exists(local_path):
-            continue
-
-        print(
-            f"worker-comfyui - Model asset missing for {model_name}, downloading: {rel_path}"
-        )
-        try:
-            _download_file(url, local_path, hf_token=hf_token)
-            print(f"worker-comfyui - Downloaded: {rel_path}")
-        except Exception as e:
-            return False, f"Failed downloading {rel_path}: {e}"
-
-    return True, None
-
-
-def _apply_model_preset(workflow, model_name):
-    presets = _load_model_presets()
-    preset = presets.get(model_name)
-    if not preset:
-        return False, f"Unsupported model '{model_name}'. Available: {', '.join(presets.keys())}"
-
-    for node in workflow.values():
-        class_type = node.get("class_type", "")
-        inputs = node.get("inputs", {})
-
-        if class_type == "UNETLoader" and preset.get("unet_name"):
-            inputs["unet_name"] = preset["unet_name"]
-        elif class_type == "CLIPLoader" and preset.get("clip_name"):
-            inputs["clip_name"] = preset["clip_name"]
-        elif class_type == "VAELoader" and preset.get("vae_name"):
-            inputs["vae_name"] = preset["vae_name"]
-
-    return True, None
-
-
-def _build_custom_mode_input(job_input, mode):
-    workflow_path = (
-        FLUX2_T2I_WORKFLOW_PATH if mode == "t2i" else FLUX2_I2I_WORKFLOW_PATH
-    )
-
-    try:
-        workflow = _load_workflow_template(workflow_path)
-    except Exception as e:
-        return None, f"Unable to load workflow template ({workflow_path}): {e}"
-
-    prompt = job_input.get("prompt")
-    if not prompt:
-        return None, "Missing 'prompt' parameter"
-
-    options = job_input.get("options") or {}
-    if not isinstance(options, dict):
-        return None, "'options' must be an object"
-
-    count = job_input.get("count", 1)
-    try:
-        count = int(count)
-    except Exception:
-        return None, "'count' must be an integer"
-    if count < 1:
-        return None, "'count' must be >= 1"
-
-    default_width = None if mode == "i2i" else 1024
-    default_height = None if mode == "i2i" else 1024
-    width, height = _resolve_dimensions(
-        job_input.get("aspect_ratio"),
-        job_input.get("width"),
-        job_input.get("height"),
-        default_width=default_width,
-        default_height=default_height,
-    )
-
-    _set_prompt_fields(
-        workflow,
-        prompt=prompt,
-        negative_prompt=job_input.get("negative_prompt"),
-    )
-
-    model_name = options.get("model") or job_input.get("model")
-    if model_name:
-        ok, model_error = _apply_model_preset(workflow, model_name)
-        if not ok:
-            return None, model_error
-
-    _set_numeric_fields(workflow, width, height, count, options)
-
-    images = None
-    if mode == "i2i":
-        image_value = job_input.get("image")
-        image_name = job_input.get("image_name", "input_image.png")
-
-        # Allow either `image` or existing `images` format
-        if image_value:
-            images = [{"name": image_name, "image": image_value}]
-        elif job_input.get("images"):
-            images = job_input.get("images")
-            if not isinstance(images, list) or not all(
-                "name" in img and "image" in img for img in images
-            ):
-                return (
-                    None,
-                    "'images' must be a list of objects with 'name' and 'image' keys",
-                )
-            image_name = images[0]["name"]
-        else:
-            return None, "Missing 'image' (or 'images') parameter for i2i mode"
-
-        _set_i2i_image_fields(workflow, image_name)
-
-    return {
-        "workflow": workflow,
-        "images": images,
-        "comfy_org_api_key": job_input.get("comfy_org_api_key"),
-        "selected_model": model_name,
-    }, None
 
 
 def _get_comfyui_pid():
@@ -1682,7 +1397,6 @@ def handler(job):
     workflow = validated_data["workflow"]
     input_images = validated_data.get("images")
     remote_images = validated_data.get("remote_images") or []
-    selected_model = validated_data.get("selected_model")
     video_meta = validated_data.get("meta", {})
     video_mode = video_meta.get("mode")
     video_filename_prefix = None
@@ -1698,12 +1412,6 @@ def handler(job):
     ok, model_error = _check_wan22_model_assets()
     if not ok:
         return {"error": model_error}
-
-    # For custom API: verify model assets are present, download once if missing
-    if selected_model:
-        ok, model_error = _ensure_model_assets(selected_model)
-        if not ok:
-            return {"error": model_error}
 
     # Make sure that the ComfyUI HTTP API is available before proceeding
     if not check_server(

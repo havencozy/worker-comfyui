@@ -13,8 +13,7 @@ The worker will not add custom `/v1/videos/*` HTTP routes. Clients will continue
 
 ## Non-Goals
 
-- No image generation modes in the video deployment contract.
-- No `t2i` or `i2i` documentation for this deployment.
+- The public deployment contract documents only Wan2.2 video generation modes.
 - No native audio generation.
 - No Wan2.2 S2V in this first implementation.
 - No general video/audio-reference reasoning for `r2v`.

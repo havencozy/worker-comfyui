@@ -31,11 +31,11 @@ Models must be placed in the following structure on your network volume:
 ```text
 /runpod-volume/
 └── models/
-    ├── checkpoints/      # Stable Diffusion checkpoints (.safetensors, .ckpt)
+    ├── checkpoints/      # Checkpoint models when used by custom video workflows
     ├── loras/            # LoRA files (.safetensors, .pt)
     ├── vae/              # VAE models (.safetensors, .pt)
     ├── clip/             # CLIP models (.safetensors, .pt)
-    ├── text_encoders/    # Text encoder models used by newer Flux workflows
+    ├── text_encoders/    # Text encoder models used by newer workflows
     ├── clip_vision/      # CLIP Vision models
     ├── diffusion_models/ # Diffusion model files used by UNETLoader
     ├── controlnet/       # ControlNet models (.safetensors, .pt)
@@ -48,52 +48,6 @@ Models must be placed in the following structure on your network volume:
 > **Note**
 >
 > Only create the subdirectories you actually need; empty or missing folders are fine.
-
-## Preparing Flux2 Models on a Network Volume
-
-For the custom `t2i` and `i2i` endpoints, prefer storing Flux2 model files on a RunPod Network Volume instead of baking them into the Docker image. This keeps image builds smaller and avoids long `exporting layers` times.
-
-When preparing the volume from a RunPod Pod, the network volume is usually mounted at `/workspace`. The same volume is mounted at `/runpod-volume` inside serverless workers.
-
-Run this once from a Pod attached to the same network volume:
-
-```bash
-# 1. Move to the network volume root inside the setup Pod
-cd /workspace
-
-# 2. Create the model directories expected by the worker
-mkdir -p models/text_encoders models/diffusion_models models/vae models/loras
-
-# 3. Download Text Encoder (Mistral)
-wget --show-progress \
-  -O models/text_encoders/mistral_3_small_flux2_bf16.safetensors \
-  https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/text_encoders/mistral_3_small_flux2_bf16.safetensors
-
-# 4. Download core Diffusion model (Flux2 Dev FP8)
-wget --show-progress \
-  -O models/diffusion_models/flux2_dev_fp8mixed.safetensors \
-  https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/diffusion_models/flux2_dev_fp8mixed.safetensors
-
-# 5. Download VAE
-wget --show-progress \
-  -O models/vae/flux2-vae.safetensors \
-  https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors
-
-# 6. Download Turbo LoRA used by the Flux2 image setup
-wget --show-progress \
-  -O models/loras/Flux_2-Turbo-LoRA_comfyui.safetensors \
-  https://huggingface.co/ByteZSzn/Flux.2-Turbo-ComfyUI/resolve/main/Flux_2-Turbo-LoRA_comfyui.safetensors
-```
-
-Then configure the serverless endpoint with:
-
-```text
-COMFY_ROOT=/runpod-volume
-```
-
-This makes runtime model preflight checks look for files under `/runpod-volume/models/...`, matching the files created under `/workspace/models/...` in the setup Pod.
-
-If the Hugging Face download requires authentication, set `HUGGINGFACE_ACCESS_TOKEN` or `HF_TOKEN` on the worker. The runtime downloader uses those variables when it needs to fetch missing files.
 
 ## Preparing Wan2.2 14B Video Models on a Network Volume
 
@@ -278,5 +232,3 @@ Once you have resolved your issue, disable diagnostics to keep logs clean:
 - Set `NETWORK_VOLUME_DEBUG=false`
 
 This returns the worker to normal behavior without extra log noise.
-
-

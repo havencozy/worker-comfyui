@@ -1,6 +1,6 @@
 # Introduction
 
-This project (`worker-comfyui`) provides a way to run [ComfyUI](https://github.com/comfyanonymous/ComfyUI) as a serverless API worker on the [RunPod](https://www.runpod.io/) platform. Its main purpose is to allow users to submit ComfyUI image generation workflows via a simple API call and receive the resulting images, either directly as base64-encoded strings or via an upload to an AWS S3 bucket.
+This project (`worker-comfyui`) provides a way to run curated Wan2.2 video generation workflows as a serverless API worker on the [RunPod](https://www.runpod.io/) platform. Its main purpose is to accept simplified `t2v`, `i2v`, and `r2v` payloads and return generated video artifacts as S3 URLs.
 
 It packages ComfyUI into Docker images, manages job handling via the `runpod` SDK, uses websockets for efficient communication with ComfyUI, and facilitates configuration through environment variables.
 
@@ -11,7 +11,7 @@ This document outlines the key operational and structural conventions for the `w
 ## 1. Configuration
 
 - **Environment Variables:** All external configurations (e.g., AWS S3 credentials, RunPod behavior modifications like `REFRESH_WORKER`) **must** be managed via environment variables.
-- Refer to the main `README.md` sections "Config" and "Upload image to AWS S3" for details on available variables.
+- Refer to the main `README.md` and `docs/configuration.md` for video worker environment variables.
 
 ## 2. Docker Usage
 
@@ -21,18 +21,18 @@ This document outlines the key operational and structural conventions for the `w
   # Example build command
   docker build --platform linux/amd64 -t my-image:tag .
   ```
-- **Development Builds:** For faster development iterations, use `MODEL_TYPE=base` to skip downloading external models:
+- **Development Builds:** For faster development iterations, use `MODEL_TYPE=none` to skip downloading external models:
   ```bash
-  docker build --build-arg MODEL_TYPE=base -t runpod/worker-comfyui:dev .
+  docker build --build-arg MODEL_TYPE=none -t runpod/worker-comfyui:dev .
   ```
 - **Customization:** Follow the methods in the `README.md` for adding custom models/nodes (Network Volume or Dockerfile edits + snapshots).
 
 ## 3. API Interaction
 
-- **Input Structure:** API calls to the `/run` or `/runsync` endpoints must adhere to the JSON structure specified in the `README.md` ("API specification"). The primary key is `input`, containing `workflow` (mandatory object) and `images` (optional array).
-- **Image Encoding:** Input images provided in the `input.images` array must be base64 encoded strings (optionally including a `data:[<mediatype>];base64,` prefix).
-- **Workflow Format:** The `input.workflow` object should contain the JSON exported from ComfyUI using the "Save (API Format)" option (requires enabling "Dev mode Options" in ComfyUI settings).
-- **Output Structure:** Successful responses contain an `output.images` field, which is a **list of dictionaries**. Each dictionary includes `filename` (string), `type` (`"s3_url"` or `"base64"`), and `data` (string containing the URL or base64 data). Refer to the `README.md` API examples for the exact structure.
+- **Input Structure:** API calls to the `/run` or `/runsync` endpoints must adhere to the JSON structure specified in the `README.md` ("API specification"). The primary key is `input`, containing a simplified Wan2.2 video payload. Raw `input.workflow` payloads are not part of this video worker API.
+- **Frame Encoding:** `i2v` and `r2v` inline frame fields (`start_frame`, `end_frame`) must be base64 strings, optionally including a `data:[<mediatype>];base64,` prefix. Remote `r2v` frames use `image_urls`.
+- **Workflow Format:** Built-in workflow templates live under `workflows/` and are loaded by mode. To replace a template, export API-format JSON from ComfyUI and save it over the matching Wan2.2 workflow file.
+- **Output Structure:** Successful responses contain `output.videos`, a list of video artifact dictionaries with `filename`, `type: "s3_url"`, and `data` containing the uploaded URL. Refer to the `README.md` API examples for the exact structure.
 - **Internal Communication:** Job status monitoring uses the ComfyUI websocket API instead of HTTP polling for efficiency.
 
 ## 4. Error Handling
@@ -47,7 +47,7 @@ This document outlines the key operational and structural conventions for the `w
 - **Code Changes:** After modifying handler code, always rebuild the Docker image before testing with `docker-compose`:
   ```bash
   docker-compose down
-  docker build --build-arg MODEL_TYPE=base -t runpod/worker-comfyui:dev .
+  docker build --build-arg MODEL_TYPE=none -t runpod/worker-comfyui:dev .
   docker-compose up -d
   ```
 - **Debugging:** Use strategic logging/print statements to understand external API responses (like ComfyUI's error formats) before implementing error handling.

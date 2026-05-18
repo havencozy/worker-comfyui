@@ -6,6 +6,10 @@ class TestDockerfileRunpodBuildDefaults(unittest.TestCase):
     def setUp(self):
         self.dockerfile = Path("Dockerfile").read_text()
         self.docker_bake = Path("docker-bake.hcl").read_text()
+        self.github_workflows = "\n".join(
+            path.read_text()
+            for path in Path(".github/workflows").glob("*.yml")
+        )
 
     def test_plain_docker_build_uses_cuda_130_comfy_defaults(self):
         self.assertIn("ARG COMFYUI_VERSION=v0.21.1", self.dockerfile)
@@ -44,6 +48,22 @@ class TestDockerfileRunpodBuildDefaults(unittest.TestCase):
         self.assertIn('target = "base"', self.docker_bake)
         self.assertIn('MODEL_TYPE = "none"', self.docker_bake)
         self.assertIn('-wan2.2-volume', self.docker_bake)
+
+    def test_video_branch_does_not_define_legacy_non_video_build_targets(self):
+        combined = (
+            f"{self.dockerfile}\n{self.docker_bake}\n{self.github_workflows}"
+        ).lower()
+        disallowed_terms = [
+            "sd" + "xl",
+            "sd" + "3",
+            "z-" + "image-turbo",
+            "fl" + "ux1-schnell",
+            "fl" + "ux1-dev",
+            "fl" + "ux1-dev-fp8",
+            "base-cuda" + "12",
+        ]
+        for term in disallowed_terms:
+            self.assertNotIn(term, combined)
 
     def test_installs_comfyui_boot_dependencies(self):
         dockerfile = self.dockerfile.lower()

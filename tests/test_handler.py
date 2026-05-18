@@ -154,12 +154,24 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertEqual(validated_data["workflow"]["55"]["inputs"]["length"], 81)
         self.assertEqual(validated_data["workflow"]["57"]["inputs"]["noise_seed"], 42)
 
-    def test_wan22_i2v_alias_accepts_image_alias(self):
+    def test_video_input_passes_per_request_comfy_org_api_key(self):
+        input_data = {
+            "mode": "t2v",
+            "prompt": "clean cinematic motion",
+            "api_key_comfy_org": "request-key",
+        }
+
+        validated_data, error = handler.validate_input(input_data)
+
+        self.assertIsNone(error)
+        self.assertEqual(validated_data["comfy_org_api_key"], "request-key")
+
+    def test_wan22_i2v_alias_accepts_start_frame(self):
         input_data = {
             "mode": "wan22-i2v",
             "prompt": "add subtle cinematic motion",
-            "image": "data:image/png;base64,ZmFrZQ==",
-            "image_name": "portrait.png",
+            "start_frame": "data:image/png;base64,ZmFrZQ==",
+            "start_frame_name": "portrait.png",
         }
 
         validated_data, error = handler.validate_input(input_data)
@@ -168,18 +180,18 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertEqual(validated_data["meta"]["mode"], "i2v")
         self.assertEqual(
             validated_data["images"],
-            [{"name": "portrait.png", "image": input_data["image"]}],
+            [{"name": "portrait.png", "image": input_data["start_frame"]}],
         )
         self.assertEqual(
             validated_data["workflow"]["56"]["inputs"]["image"], "portrait.png"
         )
 
-    def test_wan22_flf2v_alias_accepts_image_and_end_image_aliases(self):
+    def test_wan22_flf2v_alias_accepts_start_and_end_frames(self):
         input_data = {
             "mode": "wan22-flf2v",
             "prompt": "move from first frame to last frame",
-            "image": "data:image/png;base64,c3RhcnQ=",
-            "end_image": "data:image/png;base64,ZW5k",
+            "start_frame": "data:image/png;base64,c3RhcnQ=",
+            "end_frame": "data:image/png;base64,ZW5k",
         }
 
         validated_data, error = handler.validate_input(input_data)
@@ -189,8 +201,8 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertEqual(
             validated_data["images"],
             [
-                {"name": "start_frame.png", "image": input_data["image"]},
-                {"name": "end_frame.png", "image": input_data["end_image"]},
+                {"name": "start_frame.png", "image": input_data["start_frame"]},
+                {"name": "end_frame.png", "image": input_data["end_frame"]},
             ],
         )
 
@@ -236,6 +248,50 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         )
         self.assertEqual(workflow["1"]["inputs"]["fps"], 24)
         self.assertEqual(workflow["2"]["inputs"]["fps"], 24)
+
+    def test_set_video_sampler_fields_splits_wan22_dual_sampler_steps(self):
+        workflow = {
+            "high": {
+                "class_type": "KSamplerAdvanced",
+                "_meta": {"title": "KSampler Advanced High Noise"},
+                "inputs": {
+                    "noise_seed": 1,
+                    "steps": 20,
+                    "cfg": 3.5,
+                    "start_at_step": 0,
+                    "end_at_step": 10,
+                },
+            },
+            "low": {
+                "class_type": "KSamplerAdvanced",
+                "_meta": {"title": "KSampler Advanced Low Noise"},
+                "inputs": {
+                    "noise_seed": 0,
+                    "steps": 20,
+                    "cfg": 3.5,
+                    "start_at_step": 10,
+                    "end_at_step": 10000,
+                },
+            },
+        }
+
+        handler._set_video_sampler_fields(
+            workflow,
+            seed=42,
+            options={"steps": 30, "guidance_scale": 7.5},
+        )
+
+        self.assertEqual(workflow["high"]["inputs"]["noise_seed"], 42)
+        self.assertEqual(workflow["high"]["inputs"]["steps"], 30)
+        self.assertEqual(workflow["high"]["inputs"]["cfg"], 7.5)
+        self.assertEqual(workflow["high"]["inputs"]["start_at_step"], 0)
+        self.assertEqual(workflow["high"]["inputs"]["end_at_step"], 15)
+
+        self.assertEqual(workflow["low"]["inputs"]["noise_seed"], 42)
+        self.assertEqual(workflow["low"]["inputs"]["steps"], 30)
+        self.assertEqual(workflow["low"]["inputs"]["cfg"], 7.5)
+        self.assertEqual(workflow["low"]["inputs"]["start_at_step"], 15)
+        self.assertEqual(workflow["low"]["inputs"]["end_at_step"], 10000)
 
     def test_valid_i2v_requires_and_wires_start_frame(self):
         input_data = {
@@ -359,9 +415,9 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertEqual(error["code"], "UNSUPPORTED_REFERENCE_COMBINATION")
         self.assertIn("@Video1", error["message"])
 
-    def test_legacy_image_modes_are_not_supported(self):
+    def test_non_video_modes_are_not_supported(self):
         validated_data, error = handler.validate_input(
-            {"mode": "t2i", "prompt": "old image mode"}
+            {"mode": "not-video", "prompt": "old non-video mode"}
         )
 
         self.assertIsNone(validated_data)
