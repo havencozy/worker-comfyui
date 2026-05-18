@@ -1,5 +1,5 @@
 # Build argument for base image selection
-ARG BASE_IMAGE=runpod/pytorch:2.8.0-py3.11-cuda12.8.1-devel-ubuntu
+ARG BASE_IMAGE=runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404
 
 # Stage 1: Base image with common dependencies
 FROM ${BASE_IMAGE} AS base
