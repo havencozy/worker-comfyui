@@ -9,6 +9,9 @@ ARG COMFYUI_VERSION=v0.21.1
 ARG CUDA_VERSION_FOR_COMFY=
 ARG ENABLE_PYTORCH_UPGRADE=true
 ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu130
+ARG COMFYUI_GGUF_REF=main
+ARG COMFYUI_KJNODES_REF=main
+ARG COMFYUI_LTXVIDEO_REF=main
 
 # Prevents prompts from packages asking for user input during installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -71,6 +74,16 @@ RUN if ! /comfyui/.venv/bin/python -c "import torch; assert torch.version.cuda, 
 
 # Change working directory to ComfyUI
 WORKDIR /comfyui
+
+# Install required custom nodes for LTX workflows.
+# Keep this in image layers so Runtime pods do not depend on node installs.
+RUN mkdir -p /comfyui/custom_nodes \
+    && git clone --depth 1 --branch "${COMFYUI_GGUF_REF}" https://github.com/city96/ComfyUI-GGUF /comfyui/custom_nodes/ComfyUI-GGUF \
+    && git clone --depth 1 --branch "${COMFYUI_KJNODES_REF}" https://github.com/kijai/ComfyUI-KJNodes /comfyui/custom_nodes/ComfyUI-KJNodes \
+    && git clone --depth 1 --branch "${COMFYUI_LTXVIDEO_REF}" https://github.com/Lightricks/ComfyUI-LTXVideo /comfyui/custom_nodes/ComfyUI-LTXVideo \
+    && /comfyui/.venv/bin/python -m pip install -r /comfyui/custom_nodes/ComfyUI-GGUF/requirements.txt \
+    && /comfyui/.venv/bin/python -m pip install -r /comfyui/custom_nodes/ComfyUI-KJNodes/requirements.txt \
+    && /comfyui/.venv/bin/python -m pip install -r /comfyui/custom_nodes/ComfyUI-LTXVideo/requirements.txt
 
 # Support for the network volume
 ADD src/extra_model_paths.yaml ./
