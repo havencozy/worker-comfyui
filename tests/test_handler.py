@@ -19,18 +19,14 @@ def _install_runpod_stub():
     runpod_module = types.ModuleType("runpod")
     serverless_module = types.ModuleType("runpod.serverless")
     utils_module = types.ModuleType("runpod.serverless.utils")
-    rp_upload_module = types.ModuleType("runpod.serverless.utils.rp_upload")
 
     serverless_module.start = Mock()
-    rp_upload_module.upload_image = Mock(return_value="simulated_uploaded/image.png")
-    utils_module.rp_upload = rp_upload_module
     serverless_module.utils = utils_module
     runpod_module.serverless = serverless_module
 
     sys.modules.setdefault("runpod", runpod_module)
     sys.modules.setdefault("runpod.serverless", serverless_module)
     sys.modules.setdefault("runpod.serverless.utils", utils_module)
-    sys.modules.setdefault("runpod.serverless.utils.rp_upload", rp_upload_module)
 
 
 def _install_websocket_stub():
@@ -591,6 +587,57 @@ class TestRunpodWorkerComfy(unittest.TestCase):
             )
 
         self.assertIn("did not return an image", str(ctx.exception))
+
+    def test_build_s3_key_defaults_to_video_prefix(self):
+        self.assertEqual(
+            handler._build_s3_key("job-1", "../out.mp4"),
+            "video/job-1/out.mp4",
+        )
+
+    def test_normalize_s3_endpoint_uses_path_bucket_for_legacy_config(self):
+        endpoint, bucket = handler._normalize_s3_endpoint_and_bucket(
+            "https://account.r2.cloudflarestorage.com/runpod-serverless"
+        )
+
+        self.assertEqual(endpoint, "https://account.r2.cloudflarestorage.com")
+        self.assertEqual(bucket, "runpod-serverless")
+
+    @patch("handler._get_s3_client")
+    def test_upload_artifact_to_s3_uses_configured_bucket_and_video_prefix(
+        self, mock_get_client
+    ):
+        mock_client = MagicMock()
+        mock_client.generate_presigned_url.return_value = (
+            "https://bucket.example.com/video/job-1/out.mp4"
+        )
+        mock_get_client.return_value = mock_client
+
+        with patch.dict(
+            os.environ,
+            {
+                "BUCKET_ENDPOINT_URL": "https://account.r2.cloudflarestorage.com",
+                "BUCKET_ACCESS_KEY_ID": "access",
+                "BUCKET_SECRET_ACCESS_KEY": "secret",
+                "BUCKET_NAME": "runpod-serverless",
+            },
+        ):
+            url = handler._upload_artifact_to_s3("job-1", "out.mp4", b"video-bytes")
+
+        mock_get_client.assert_called_once_with(
+            "https://account.r2.cloudflarestorage.com"
+        )
+        mock_client.put_object.assert_called_once_with(
+            Bucket="runpod-serverless",
+            Key="video/job-1/out.mp4",
+            Body=b"video-bytes",
+            ContentType="video/mp4",
+        )
+        mock_client.generate_presigned_url.assert_called_once_with(
+            "get_object",
+            Params={"Bucket": "runpod-serverless", "Key": "video/job-1/out.mp4"},
+            ExpiresIn=604800,
+        )
+        self.assertEqual(url, "https://bucket.example.com/video/job-1/out.mp4")
 
     @patch("handler.get_image_data", return_value=b"video-bytes")
     @patch(

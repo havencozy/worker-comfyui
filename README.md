@@ -106,6 +106,16 @@ The following fields are supported within the `input` object:
 | `input.options.strength` | Number | No | `0..1`, defaults to `0.6`. |
 | `input.options.length` | Integer | No | Direct frame count override, `1..450`. When set, `duration_sec = length / fps`. |
 
+Parameter mapping summary:
+
+- `duration` accepts `auto` or any integer second from `4` through `15`. `auto` maps to `5` seconds.
+- If `input.options.length` is set, it overrides `duration`; the worker uses `num_frames = length` and reports `duration_sec = length / fps`.
+- Without `options.length`, `num_frames = duration_sec * fps`.
+- `resolution + aspect_ratio` maps to workflow `width` and `height`; `auto` aspect ratio is treated as `16:9`. For example, `480p + 16:9` becomes `848 x 480`, and `720p + 16:9` becomes `1280 x 720`.
+- `options.steps` is injected into both Wan2.2 samplers. The high-noise sampler runs the first half of the steps, and the low-noise sampler starts at `steps // 2`.
+
+See [API Testing Guide](docs/api-testing.md#parameter-mapping) for the full parameter table and examples.
+
 ### Output
 
 ```json

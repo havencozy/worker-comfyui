@@ -68,6 +68,51 @@ All requests must wrap the custom payload under `input`.
 | `input.options.strength` | number | no | `0..1`. Defaults to `0.6`. Reserved for workflows that expose strength controls. |
 | `input.options.length` | integer | no | Direct frame count override, `1..450`. When set, `duration_sec = length / fps`. |
 
+### Parameter Mapping
+
+These rules are implemented in `handler.py` and are applied before the selected Wan2.2 workflow is queued in ComfyUI.
+
+| Input | Allowed values | Default | Workflow mapping |
+| --- | --- | --- | --- |
+| `resolution` | `480p`, `720p`, `1080p` | `720p` | Chooses the target short side in pixels. |
+| `aspect_ratio` | `auto`, `21:9`, `16:9`, `4:3`, `1:1`, `3:4`, `9:16` | `auto` | `auto` is treated as `16:9`. Width/height are injected into the Wan latent node. |
+| `duration` | `auto` or any integer second from `4` through `15` | `auto` | `auto` becomes `5` seconds. Integer examples: `4`, `5`, `6`, `7`, `8`, `9`, `10`, `11`, `12`, `13`, `14`, `15`. |
+| `options.fps` | integer `8..30` | `24` | Used by `CreateVideo` and by frame-count calculation. |
+| `options.length` | integer frame count `1..450` | unset | Overrides `duration`. When set, `num_frames = length` and `duration_sec = length / fps`. |
+| `seed` | integer `0..2147483647` | generated per request | Injected into sampler seed fields. `options.seed` is also accepted when top-level `seed` is omitted. |
+| `options.steps` | integer `10..80` | `30` | Injected into both Wan2.2 samplers. High-noise runs `0..steps//2`; low-noise starts at `steps//2`. |
+| `options.guidance_scale` | number `1..20` | `7.5` | Injected into sampler `cfg`. |
+| `generate_audio` | boolean | `false` if omitted | Wan2.2 workflows here are silent. `true` adds `AUDIO_NOT_SUPPORTED_BY_WORKFLOW` to `meta.warnings`. |
+
+Frame count calculation:
+
+```text
+if options.length is set:
+  num_frames = options.length
+  duration_sec = round(options.length / options.fps, 3)
+else:
+  duration_sec = 5 when duration is "auto", otherwise duration
+  num_frames = duration_sec * options.fps
+```
+
+Common examples:
+
+| Payload fields | Resulting metadata |
+| --- | --- |
+| `duration: "auto"`, `fps: 24` | `duration_sec: 5`, `num_frames: 120` |
+| `duration: 4`, `fps: 16` | `duration_sec: 4`, `num_frames: 64` |
+| `duration: 8`, `fps: 24` | `duration_sec: 8`, `num_frames: 192` |
+| `options.length: 81`, `fps: 24` | `duration_sec: 3.375`, `num_frames: 81`; `duration` is ignored |
+
+Resolution examples:
+
+| `resolution` + `aspect_ratio` | Injected `width` x `height` |
+| --- | --- |
+| `480p` + `16:9` | `848 x 480` |
+| `720p` + `16:9` | `1280 x 720` |
+| `720p` + `9:16` | `720 x 1280` |
+| `1080p` + `16:9` | `1920 x 1080` |
+
 ### Output Shape
 
 Successful jobs return video artifacts only. This video branch does not return still-frame artifacts.
@@ -108,7 +153,7 @@ export RUNPOD_API_KEY="<runpod_api_key>"
 export ENDPOINT_ID="<endpoint_id>"
 ```
 
-Wan2.2 video outputs are uploaded to S3-compatible storage and returned as `s3_url` artifacts. Configure `BUCKET_ENDPOINT_URL`, `BUCKET_ACCESS_KEY_ID`, and `BUCKET_SECRET_ACCESS_KEY` before running production video tests.
+Wan2.2 video outputs are uploaded to S3-compatible storage and returned as `s3_url` artifacts. Configure `BUCKET_ENDPOINT_URL`, `BUCKET_ACCESS_KEY_ID`, `BUCKET_SECRET_ACCESS_KEY`, and `BUCKET_NAME` before running production video tests. `BUCKET_PREFIX` defaults to `video`, so generated artifacts are stored as `video/<job_id>/<filename>`.
 
 Text-to-video sync test:
 

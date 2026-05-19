@@ -1,5 +1,4 @@
 import runpod
-from runpod.serverless.utils import rp_upload
 import json
 import urllib.request
 import urllib.parse
@@ -10,11 +9,11 @@ import base64
 from io import BytesIO
 import websocket
 import uuid
-import tempfile
 import socket
 import traceback
 import logging
 import copy
+import mimetypes
 
 from network_volume import (
     is_network_volume_debug_enabled,
@@ -708,22 +707,92 @@ def _fetch_remote_image(remote_image):
 
 
 def _require_s3_config():
-    if not os.environ.get("BUCKET_ENDPOINT_URL"):
-        raise ValueError("S3 artifact upload is required for video deployment")
+    missing = [
+        name
+        for name in (
+            "BUCKET_ENDPOINT_URL",
+            "BUCKET_ACCESS_KEY_ID",
+            "BUCKET_SECRET_ACCESS_KEY",
+        )
+        if not os.environ.get(name)
+    ]
+    if missing:
+        raise ValueError(
+            "S3 artifact upload is required for video deployment; missing "
+            + ", ".join(missing)
+        )
+
+
+def _normalize_s3_endpoint_and_bucket(endpoint_url, bucket_name=None):
+    parsed = urllib.parse.urlparse(endpoint_url)
+    path_parts = [part for part in parsed.path.split("/") if part]
+    resolved_bucket = bucket_name or (path_parts[0] if path_parts else None)
+    if not resolved_bucket:
+        raise ValueError(
+            "Missing BUCKET_NAME. Set BUCKET_NAME, or include the bucket as the "
+            "path segment in BUCKET_ENDPOINT_URL."
+        )
+
+    normalized_endpoint = urllib.parse.urlunparse(
+        parsed._replace(path="", params="", query="", fragment="")
+    )
+    return normalized_endpoint, resolved_bucket
+
+
+def _build_s3_key(job_id, filename, prefix=None):
+    clean_filename = os.path.basename(filename) or "output.mp4"
+    clean_prefix = (prefix if prefix is not None else "video").strip("/")
+    key_parts = [part for part in (clean_prefix, str(job_id), clean_filename) if part]
+    return "/".join(key_parts)
+
+
+def _get_s3_client(endpoint_url):
+    try:
+        from boto3 import session
+        from botocore.config import Config
+    except ImportError as exc:
+        raise ValueError("boto3 is required for S3 artifact upload") from exc
+
+    bucket_session = session.Session()
+    config = Config(
+        signature_version="s3v4",
+        retries={"max_attempts": 3, "mode": "standard"},
+    )
+    return bucket_session.client(
+        "s3",
+        endpoint_url=endpoint_url,
+        aws_access_key_id=os.environ["BUCKET_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["BUCKET_SECRET_ACCESS_KEY"],
+        config=config,
+    )
 
 
 def _upload_artifact_to_s3(job_id, filename, artifact_bytes):
     _require_s3_config()
-    suffix = os.path.splitext(filename)[1] or ".mp4"
-    temp_file_path = None
-    try:
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temp_file:
-            temp_file.write(artifact_bytes)
-            temp_file_path = temp_file.name
-        return rp_upload.upload_image(job_id, temp_file_path)
-    finally:
-        if temp_file_path and os.path.exists(temp_file_path):
-            os.remove(temp_file_path)
+    endpoint_url, bucket_name = _normalize_s3_endpoint_and_bucket(
+        os.environ["BUCKET_ENDPOINT_URL"],
+        os.environ.get("BUCKET_NAME"),
+    )
+    key = _build_s3_key(job_id, filename, os.environ.get("BUCKET_PREFIX", "video"))
+    content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    s3_client = _get_s3_client(endpoint_url)
+
+    print(
+        "worker-comfyui - Uploading video artifact to S3: "
+        f"bucket={bucket_name}, key={key}, content_type={content_type}, "
+        f"bytes={len(artifact_bytes)}"
+    )
+    s3_client.put_object(
+        Bucket=bucket_name,
+        Key=key,
+        Body=artifact_bytes,
+        ContentType=content_type,
+    )
+    return s3_client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": bucket_name, "Key": key},
+        ExpiresIn=604800,
+    )
 
 
 def _history_value_key_summary(value, depth=0):

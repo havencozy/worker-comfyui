@@ -43,11 +43,25 @@ Configure these variables so the worker can upload generated videos directly to 
 
 | Environment Variable       | Description                                                                                                                             | Example                                                    |
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `BUCKET_ENDPOINT_URL`      | The full endpoint URL of your S3 bucket. **Must be set to enable S3 upload.**                                                           | `https://<your-bucket-name>.s3.<aws-region>.amazonaws.com` |
+| `BUCKET_ENDPOINT_URL`      | The S3-compatible endpoint URL. **Must be set to enable S3 upload.** For Cloudflare R2, use the account endpoint without a date or folder prefix. | `https://<account_id>.r2.cloudflarestorage.com` |
 | `BUCKET_ACCESS_KEY_ID`     | Your AWS access key ID associated with the IAM user that has write permissions to the bucket. Required if `BUCKET_ENDPOINT_URL` is set. | `AKIAIOSFODNN7EXAMPLE`                                     |
 | `BUCKET_SECRET_ACCESS_KEY` | Your AWS secret access key associated with the IAM user. Required if `BUCKET_ENDPOINT_URL` is set.                                      | `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`                 |
+| `BUCKET_NAME`              | Bucket name to upload generated videos into. If omitted, the worker uses the first path segment from `BUCKET_ENDPOINT_URL` for backward compatibility. | `runpod-serverless` |
+| `BUCKET_PREFIX`            | Object key prefix for generated videos. Defaults to `video`. Set to an empty string to upload directly under `<job_id>/<filename>`. | `video` |
 
-**Note:** Upload uses the `runpod` Python library helper `rp_upload.upload_image`, which handles creating a unique path within the bucket based on the `job_id`.
+Generated video keys use this shape by default:
+
+```text
+video/<job_id>/<filename>
+```
+
+Older configs that include the bucket in the endpoint path are still accepted:
+
+```text
+BUCKET_ENDPOINT_URL=https://<account_id>.r2.cloudflarestorage.com/runpod-serverless
+```
+
+The worker treats `runpod-serverless` as `BUCKET_NAME`, strips it from the endpoint URL, and still uploads under the `video/<job_id>/<filename>` prefix. Prefer the explicit `BUCKET_NAME` form for new deployments.
 
 ### Example S3 Response
 
@@ -62,7 +76,7 @@ If the S3 environment variables (`BUCKET_ENDPOINT_URL`, `BUCKET_ACCESS_KEY_ID`, 
       {
         "filename": "wan22_t2v_00001.mp4",
         "type": "s3_url",
-        "data": "https://your-bucket-name.s3.your-region.amazonaws.com/sync-uuid-string/wan22_t2v_00001.mp4"
+        "data": "https://your-bucket-name.s3.your-region.amazonaws.com/video/sync-uuid-string/wan22_t2v_00001.mp4"
       }
     ],
     "meta": {
@@ -81,4 +95,4 @@ If the S3 environment variables (`BUCKET_ENDPOINT_URL`, `BUCKET_ACCESS_KEY_ID`, 
 }
 ```
 
-The `data` field contains the presigned URL to the uploaded video file in your S3 bucket. The path usually includes the job ID.
+The `data` field contains the presigned URL to the uploaded video file in your S3 bucket. With default settings, the path includes the `video` prefix and the RunPod job ID.
