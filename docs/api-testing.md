@@ -2,6 +2,9 @@
 
 This worker exposes RunPod serverless endpoints and accepts a simplified custom input payload. Clients do not send raw ComfyUI workflow JSON anymore.
 
+For third-party integrations that need the exact payload and response contract,
+see the [Image API Contract](image-api-contract.md).
+
 ## Endpoints
 
 Replace `<endpoint_id>` and `<runpod_api_key>` before running the examples.
