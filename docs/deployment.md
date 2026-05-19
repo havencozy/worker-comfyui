@@ -2,6 +2,12 @@
 
 This guide explains how to deploy the `worker-comfyui` as a serverless endpoint on RunPod, covering both pre-built official images and custom-built images.
 
+If the endpoint will be used by third-party clients, read the
+[Third-Party RunPod Integration Guide](third-party-runpod-integration.md) after
+the basic endpoint is deployed. It documents the public request/response
+contract, required S3 configuration, model volume layout, and production
+checklist.
+
 ## Deploying Pre-Built Official Images
 
 This is the simplest method if the official images meet your needs.

@@ -63,13 +63,6 @@ WORKFLOW_DIR = os.environ.get(
     "WORKFLOW_DIR", os.path.join(os.path.dirname(__file__), "workflows")
 )
 
-WAN22_MODEL_NAME = "wan2.2-14b"
-VIDEO_MODES = {"t2v", "i2v", "r2v"}
-VIDEO_MODE_ALIASES = {
-    "wan22-t2v": "t2v",
-    "wan22-i2v": "i2v",
-    "wan22-flf2v": "r2v",
-}
 RESOLUTION_PRESETS = {"480p": 480, "720p": 720, "1080p": 1080}
 VIDEO_ASPECT_RATIOS = {
     "21:9": (21, 9),
@@ -103,6 +96,8 @@ def _refresh_runtime_config():
     global WAN22_T2V_WORKFLOW_PATH
     global WAN22_I2V_WORKFLOW_PATH
     global WAN22_R2V_WORKFLOW_PATH
+    global LTX23_T2V_WORKFLOW_PATH
+    global LTX23_I2V_WORKFLOW_PATH
 
     WAN22_T2V_WORKFLOW_PATH = os.environ.get(
         "WAN22_T2V_WORKFLOW_PATH",
@@ -115,6 +110,14 @@ def _refresh_runtime_config():
     WAN22_R2V_WORKFLOW_PATH = os.environ.get(
         "WAN22_R2V_WORKFLOW_PATH",
         os.path.join(WORKFLOW_DIR, "wan2_2_14b_flf2v.json"),
+    )
+    LTX23_T2V_WORKFLOW_PATH = os.environ.get(
+        "LTX23_T2V_WORKFLOW_PATH",
+        os.path.join(WORKFLOW_DIR, "ltx_2_3_t2v.json"),
+    )
+    LTX23_I2V_WORKFLOW_PATH = os.environ.get(
+        "LTX23_I2V_WORKFLOW_PATH",
+        os.path.join(WORKFLOW_DIR, "ltx_2_3_i2v.json"),
     )
 
 
@@ -233,16 +236,14 @@ def validate_input(job_input):
     if not isinstance(job_input, dict):
         return None, _error("VALIDATION_ERROR", "Input must be an object")
 
-    raw_mode = job_input.get("mode")
-    mode = VIDEO_MODE_ALIASES.get(raw_mode, raw_mode)
-    if mode in VIDEO_MODES:
-        normalized_job_input = _normalize_video_mode_payload(job_input, mode)
-        return _build_video_mode_input(normalized_job_input, mode)
+    video_config = _video_mode_config(job_input.get("mode"))
+    if video_config:
+        return _build_video_mode_input(job_input, video_config)
 
     return None, _error(
         "UNSUPPORTED_MODE",
         "Missing or invalid 'mode'. Supported values: 't2v', 'i2v', 'r2v', "
-        "'wan22-t2v', 'wan22-i2v', 'wan22-flf2v'",
+        "'wan22-t2v', 'wan22-i2v', 'wan22-flf2v', 'ltx-t2v', 'ltx-i2v'",
     )
 
 
@@ -261,10 +262,68 @@ def _error(code, message):
     return {"code": code, "message": message}
 
 
-def _normalize_video_mode_payload(job_input, mode):
-    normalized = dict(job_input)
-    normalized["mode"] = mode
-    return normalized
+MODEL_MODE_REGISTRY = {
+    "t2v": {
+        "mode": "t2v",
+        "model": "wan2.2-14b",
+        "model_slug": "wan22",
+        "workflow_path": lambda: WAN22_T2V_WORKFLOW_PATH,
+    },
+    "wan22-t2v": {
+        "mode": "t2v",
+        "model": "wan2.2-14b",
+        "model_slug": "wan22",
+        "workflow_path": lambda: WAN22_T2V_WORKFLOW_PATH,
+    },
+    "i2v": {
+        "mode": "i2v",
+        "model": "wan2.2-14b",
+        "model_slug": "wan22",
+        "workflow_path": lambda: WAN22_I2V_WORKFLOW_PATH,
+    },
+    "wan22-i2v": {
+        "mode": "i2v",
+        "model": "wan2.2-14b",
+        "model_slug": "wan22",
+        "workflow_path": lambda: WAN22_I2V_WORKFLOW_PATH,
+    },
+    "r2v": {
+        "mode": "r2v",
+        "model": "wan2.2-14b",
+        "model_slug": "wan22",
+        "workflow_path": lambda: WAN22_R2V_WORKFLOW_PATH,
+    },
+    "wan22-flf2v": {
+        "mode": "r2v",
+        "model": "wan2.2-14b",
+        "model_slug": "wan22",
+        "workflow_path": lambda: WAN22_R2V_WORKFLOW_PATH,
+    },
+    "ltx-t2v": {
+        "mode": "t2v",
+        "model": "ltx-2.3",
+        "model_slug": "ltx23",
+        "workflow_path": lambda: LTX23_T2V_WORKFLOW_PATH,
+    },
+    "ltx-i2v": {
+        "mode": "i2v",
+        "model": "ltx-2.3",
+        "model_slug": "ltx23",
+        "workflow_path": lambda: LTX23_I2V_WORKFLOW_PATH,
+    },
+}
+
+
+def _video_mode_config(raw_mode):
+    entry = MODEL_MODE_REGISTRY.get(raw_mode)
+    if not entry:
+        return None
+    return {
+        "mode": entry["mode"],
+        "model": entry["model"],
+        "model_slug": entry["model_slug"],
+        "workflow_path": entry["workflow_path"](),
+    }
 
 
 def _wan22_model_roots():
@@ -308,6 +367,12 @@ def _check_wan22_model_assets():
             + ", ".join(roots)
         ),
     }
+
+
+def _check_video_model_assets(model):
+    if model == "wan2.2-14b":
+        return _check_wan22_model_assets()
+    return True, None
 
 
 def _round_to_multiple(value, multiple=16):
@@ -419,11 +484,14 @@ def _normalize_seed(job_input):
     return seed
 
 
-def _validate_video_request(job_input, mode):
+def _validate_video_request(job_input, video_config):
+    mode = video_config["mode"]
+    model = video_config["model"]
     prompt = _require_prompt(job_input)
     options = _normalize_video_options(job_input)
+    resolution = job_input.get("resolution", "720p")
     width, height = _resolve_video_dimensions(
-        job_input.get("resolution", "720p"),
+        resolution,
         job_input.get("aspect_ratio", "auto"),
     )
     duration_sec = _resolve_duration_sec(job_input.get("duration", "auto"))
@@ -442,6 +510,9 @@ def _validate_video_request(job_input, mode):
         "mode": mode,
         "prompt": prompt,
         "negative_prompt": job_input.get("negative_prompt", DEFAULT_NEGATIVE_PROMPT),
+        "model": model,
+        "resolution": resolution,
+        "aspect_ratio": job_input.get("aspect_ratio", "auto"),
         "width": width,
         "height": height,
         "duration_sec": duration_sec,
@@ -450,17 +521,6 @@ def _validate_video_request(job_input, mode):
         "options": options,
         "warnings": warnings,
     }
-
-
-def _video_workflow_path(mode):
-    if mode == "t2v":
-        return WAN22_T2V_WORKFLOW_PATH
-    if mode == "i2v":
-        return WAN22_I2V_WORKFLOW_PATH
-    if mode == "r2v":
-        return WAN22_R2V_WORKFLOW_PATH
-    raise ValueError(f"Unsupported video mode '{mode}'")
-
 
 def _extract_placeholders(prompt, prefix):
     markers = []
@@ -561,6 +621,9 @@ def _set_video_dimensions_and_length(workflow, width, height, num_frames):
                 inputs["length"] = int(num_frames)
             if "batch_size" in inputs:
                 inputs["batch_size"] = 1
+        if class_type in {"HyVideo15T2VSampler", "HyVideo15I2VSampler"}:
+            if "video_length" in inputs:
+                inputs["video_length"] = int(num_frames)
 
 
 def _set_video_sampler_fields(workflow, seed, options):
@@ -591,21 +654,30 @@ def _set_video_sampler_fields(workflow, seed, options):
                         inputs["start_at_step"] = split_step
                     if "end_at_step" in inputs:
                         inputs["end_at_step"] = 10000
+        if class_type in {"HyVideo15T2VSampler", "HyVideo15I2VSampler"}:
+            if "seed" in inputs:
+                inputs["seed"] = int(seed)
+            if "num_inference_steps" in inputs:
+                inputs["num_inference_steps"] = total_steps
+            if "guidance_scale" in inputs:
+                inputs["guidance_scale"] = float(options["guidance_scale"])
 
 
-def _video_filename_prefix(mode, job_id=None):
+def _video_filename_prefix(mode, job_id=None, model_slug="wan22"):
     if job_id:
-        return f"video/{job_id}_wan22_{mode}"
-    return f"video/wan22_{mode}"
+        return f"video/{job_id}_{model_slug}_{mode}"
+    return f"video/{model_slug}_{mode}"
 
 
-def _set_video_save_fields(workflow, mode, fps, job_id=None):
+def _set_video_save_fields(workflow, mode, fps, job_id=None, model_slug="wan22"):
     for node in workflow.values():
         inputs = node.get("inputs", {})
         class_type = node.get("class_type", "")
         if class_type == "SaveVideo":
             if "filename_prefix" in inputs:
-                inputs["filename_prefix"] = _video_filename_prefix(mode, job_id)
+                inputs["filename_prefix"] = _video_filename_prefix(
+                    mode, job_id, model_slug
+                )
             if "fps" in inputs:
                 inputs["fps"] = int(fps)
         if class_type == "CreateVideo" and "fps" in inputs:
@@ -632,13 +704,31 @@ def _set_video_load_image_fields(
                 node.setdefault("inputs", {})["image"] = start_frame_name
 
 
-def _build_video_mode_input(job_input, mode):
+def _set_model_specific_fields(workflow, video_config, normalized, job_input):
+    model_slug = video_config.get("model_slug")
+    if model_slug != "ltx23":
+        return
+
+    for node in workflow.values():
+        inputs = node.get("inputs", {})
+        # Most LTX workflows use a dedicated model loader node with hf_token.
+        # Set token if present, while remaining compatible with custom workflows.
+        if "hf_token" in inputs and not inputs.get("hf_token"):
+            inputs["hf_token"] = (
+                job_input.get("hf_token")
+                or job_input.get("huggingface_access_token")
+                or os.environ.get("HUGGINGFACE_ACCESS_TOKEN", "")
+            )
+
+
+def _build_video_mode_input(job_input, video_config):
     try:
-        normalized = _validate_video_request(job_input, mode)
+        mode = video_config["mode"]
+        normalized = _validate_video_request(job_input, video_config)
         images, remote_images, asset_warnings = _frame_assets_for_mode(
             job_input, mode, normalized["prompt"]
         )
-        workflow = _load_workflow_template(_video_workflow_path(mode))
+        workflow = _load_workflow_template(video_config["workflow_path"])
         start_frame_name = job_input.get("start_frame_name") or "start_frame.png"
         end_frame_name = job_input.get("end_frame_name") or "end_frame.png"
 
@@ -658,18 +748,25 @@ def _build_video_mode_input(job_input, mode):
             normalized["seed"],
             normalized["options"],
         )
-        _set_video_save_fields(workflow, mode, normalized["options"]["fps"])
+        _set_video_save_fields(
+            workflow,
+            mode,
+            normalized["options"]["fps"],
+            model_slug=video_config["model_slug"],
+        )
         _set_video_load_image_fields(
             workflow,
             mode,
             start_frame_name=start_frame_name,
             end_frame_name=end_frame_name,
         )
+        _set_model_specific_fields(workflow, video_config, normalized, job_input)
 
         warnings = normalized["warnings"] + asset_warnings
         meta = {
             "mode": mode,
-            "model": WAN22_MODEL_NAME,
+            "model": video_config["model"],
+            "model_slug": video_config["model_slug"],
             "seed": normalized["seed"],
             "fps": normalized["options"]["fps"],
             "duration_sec": normalized["duration_sec"],
@@ -1063,6 +1160,11 @@ def _set_prompt_fields(workflow, prompt=None, negative_prompt=None):
             elif prompt is not None and "negative" not in title:
                 # Fallback for single prompt encoder graphs
                 inputs["text"] = prompt
+        if class_type in {"HyVideo15T2VSampler", "HyVideo15I2VSampler"}:
+            if prompt is not None and "prompt" in inputs:
+                inputs["prompt"] = prompt
+            if negative_prompt is not None and "negative_prompt" in inputs:
+                inputs["negative_prompt"] = negative_prompt
 
 
 def _get_comfyui_pid():
@@ -1468,17 +1570,22 @@ def handler(job):
     remote_images = validated_data.get("remote_images") or []
     video_meta = validated_data.get("meta", {})
     video_mode = video_meta.get("mode")
+    video_model = video_meta.get("model")
+    video_model_slug = video_meta.get("model_slug") or "wan22"
     video_filename_prefix = None
-    if video_mode in VIDEO_MODES:
-        video_filename_prefix = _video_filename_prefix(video_mode, job_id)
+    if video_mode:
+        video_filename_prefix = _video_filename_prefix(
+            video_mode, job_id, video_model_slug
+        )
         _set_video_save_fields(
             workflow,
             video_mode,
             video_meta.get("fps", DEFAULT_VIDEO_OPTIONS["fps"]),
             job_id=job_id,
+            model_slug=video_model_slug,
         )
 
-    ok, model_error = _check_wan22_model_assets()
+    ok, model_error = _check_video_model_assets(video_model)
     if not ok:
         return {"error": model_error}
 

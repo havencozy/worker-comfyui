@@ -94,6 +94,15 @@ class TestDockerfileRunpodBuildDefaults(unittest.TestCase):
         self.assertIn("umt5_xxl_fp8_e4m3fn_scaled.safetensors", self.dockerfile)
         self.assertIn("wan_2.1_vae.safetensors", self.dockerfile)
 
+    def test_installs_hunyuanvideo_custom_node_without_replacing_torch(self):
+        self.assertIn("ARG HUNYUANVIDEO_PLUGIN_REF=", self.dockerfile)
+        self.assertIn(
+            "github.com/yuanyuan-spec/comfyui_hunyuanvideo_1.5_plugin.git",
+            self.dockerfile,
+        )
+        self.assertIn("hunyuanvideo-requirements.txt", self.dockerfile)
+        self.assertIn("grep -Ev '^(torch|torchvision|torchaudio)", self.dockerfile)
+
 
 if __name__ == "__main__":
     unittest.main()

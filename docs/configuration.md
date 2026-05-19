@@ -13,6 +13,8 @@ This document outlines the environment variables available for configuring the `
 | `WAN22_T2V_WORKFLOW_PATH` | Override path for the Wan2.2 14B T2V API-format workflow. | `/workflows/wan2_2_14b_t2v.json` |
 | `WAN22_I2V_WORKFLOW_PATH` | Override path for the Wan2.2 14B I2V API-format workflow. | `/workflows/wan2_2_14b_i2v.json` |
 | `WAN22_R2V_WORKFLOW_PATH` | Override path for the Wan2.2 14B FLF2V API-format workflow. | `/workflows/wan2_2_14b_flf2v.json` |
+| `LTX23_T2V_WORKFLOW_PATH` | Override path for the LTX-2.3 T2V API-format workflow. | `/workflows/ltx_2_3_t2v.json` |
+| `LTX23_I2V_WORKFLOW_PATH` | Override path for the LTX-2.3 I2V API-format workflow. | `/workflows/ltx_2_3_i2v.json` |
 | `WAN22_MODEL_ROOTS` | Optional `:`-separated model roots checked before each job. Defaults to network volume first, then local ComfyUI models. | `/runpod-volume/models:/comfyui/models` |
 
 When building with `--build-arg MODEL_TYPE=none`, the image does not download Wan2.2 models. Put the required model files on the mounted network volume under `/runpod-volume/models/...`; the handler preflight will fail fast with `MODEL_ASSET_MISSING` if a required file is not visible.

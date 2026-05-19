@@ -10,7 +10,7 @@
 
 ---
 
-This project runs curated ComfyUI Wan2.2 video generation workflows as a serverless API endpoint on the RunPod platform. Submit `t2v`, `i2v`, or `r2v` requests and receive generated video artifacts as S3 URLs.
+This project runs curated ComfyUI video generation workflows as a serverless API endpoint on the RunPod platform. Submit supported video mode requests and receive generated video artifacts as S3 URLs.
 
 ## Table of Contents
 
@@ -76,6 +76,10 @@ Supported modes:
 - `t2v` / `wan22-t2v`: text-to-video using Wan2.2 14B T2V.
 - `i2v` / `wan22-i2v`: image-to-video using Wan2.2 14B I2V. Requires `start_frame` as a data URI or base64 string.
 - `r2v` / `wan22-flf2v`: first-last-frame video using Wan2.2 14B FLF2V. Requires `start_frame` and `end_frame`, or `image_urls[0]` and `image_urls[1]`.
+- `hunyuan-t2v`: text-to-video using HunyuanVideo 1.5 workflow template.
+- `hunyuan-i2v`: image-to-video using HunyuanVideo 1.5 workflow template. Requires `start_frame`.
+- `ltx-t2v`: text-to-video using LTX-2.3 workflow template.
+- `ltx-i2v`: image-to-video using LTX-2.3 workflow template. Requires `start_frame`.
 
 Wan2.2 T2V/I2V/FLF2V outputs silent videos. `generate_audio=true` is accepted but returns `AUDIO_NOT_SUPPORTED_BY_WORKFLOW` in `meta.warnings`.
 
@@ -83,7 +87,7 @@ The following fields are supported within the `input` object:
 
 | Field Path | Type | Required | Description |
 | ---------- | ---- | -------- | ----------- |
-| `input.mode` | String | Yes | Supported values: `t2v`, `i2v`, `r2v`; aliases: `wan22-t2v`, `wan22-i2v`, `wan22-flf2v`. |
+| `input.mode` | String | Yes | Supported values: `t2v`, `i2v`, `r2v`, `hunyuan-t2v`, `hunyuan-i2v`, `ltx-t2v`, `ltx-i2v`; aliases: `wan22-t2v`, `wan22-i2v`, `wan22-flf2v`. |
 | `input.prompt` | String | Yes | Positive prompt injected into the selected Wan2.2 workflow. |
 | `input.negative_prompt` | String | No | Negative prompt, defaults to an empty string. |
 | `input.resolution` | String | No | `480p`, `720p`, or `1080p`. Defaults to `720p`. |
@@ -115,6 +119,9 @@ Parameter mapping summary:
 - `options.steps` is injected into both Wan2.2 samplers. The high-noise sampler runs the first half of the steps, and the low-noise sampler starts at `steps // 2`.
 
 See [API Testing Guide](docs/api-testing.md#parameter-mapping) for the full parameter table and examples.
+
+For production endpoints exposed to external clients, also read the
+[Third-Party RunPod Integration Guide](docs/third-party-runpod-integration.md).
 
 ### Output
 
@@ -201,7 +208,14 @@ To replace a built-in template:
 
 1.  Open ComfyUI in your browser.
 2.  In the top navigation, select `Workflow > Export (API)`
-3.  Save the exported JSON over `workflows/wan2_2_14b_t2v.json`, `workflows/wan2_2_14b_i2v.json`, or `workflows/wan2_2_14b_flf2v.json`.
+3.  Save the exported JSON over one of:
+    - `workflows/wan2_2_14b_t2v.json`
+    - `workflows/wan2_2_14b_i2v.json`
+    - `workflows/wan2_2_14b_flf2v.json`
+    - `workflows/hunyuanvideo_1_5_t2v.json`
+    - `workflows/hunyuanvideo_1_5_i2v.json`
+    - `workflows/ltx_2_3_t2v.json`
+    - `workflows/ltx_2_3_i2v.json`
 4.  Rebuild the Docker image.
 
 ## SSH Access
@@ -212,6 +226,7 @@ To enable SSH access to the worker, set the `PUBLIC_KEY` environment variable to
 
 - **[Deployment Guide](docs/deployment.md):** Detailed steps for deploying on RunPod.
 - **[API Testing Guide](docs/api-testing.md):** RunPod curl commands for Wan2.2 video generation.
+- **[Third-Party RunPod Integration Guide](docs/third-party-runpod-integration.md):** Production deployment and API contract for external clients.
 - **[Configuration Guide](docs/configuration.md):** Full list of environment variables (including S3 setup).
 - **[Network Volumes & Model Paths](docs/network-volumes.md):** RunPod Network Volume layout and `wget` commands for preloading Wan2.2 models when building with `MODEL_TYPE=none`.
 - **[Customization Guide](docs/customization.md):** Adding custom models and nodes (Network Volumes, Docker builds).

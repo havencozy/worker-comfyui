@@ -4,7 +4,7 @@
 
 This worker exposes RunPod serverless endpoints and accepts a simplified custom input payload. Clients do not send raw ComfyUI workflow JSON anymore.
 
-## Wan2.2 Video Payload Contract
+## Video Payload Contract
 
 All requests must wrap the custom payload under `input`.
 
@@ -38,6 +38,11 @@ All requests must wrap the custom payload under `input`.
 | `t2v` | `wan22-t2v` | `prompt` | Text-to-video. `start_frame`, `end_frame`, and reference URL arrays are ignored with warnings. |
 | `i2v` | `wan22-i2v` | `prompt`, `start_frame` | Image-to-video. `start_frame_name` controls the uploaded frame filename. |
 | `r2v` | `wan22-flf2v` | `prompt` plus two frame refs | First-last-frame video. Send `start_frame` and `end_frame`, or at least two `image_urls`. |
+| `hunyuan-t2v` | none | `prompt` | HunyuanVideo 1.5 text-to-video. Requires a deployment image with the Hunyuan custom node and workflows. |
+| `hunyuan-i2v` | none | `prompt`, `start_frame` | HunyuanVideo 1.5 image-to-video. Requires a deployment image with the Hunyuan custom node and workflows. |
+
+For third-party production deployments, see the
+[Third-Party RunPod Integration Guide](third-party-runpod-integration.md).
 
 `r2v` prompt placeholders support `@ImageN` only when `image_urls[N-1]` exists. `@VideoN` and `@AudioN` references are rejected for this Wan2.2 FLF2V deployment.
 
@@ -45,7 +50,7 @@ All requests must wrap the custom payload under `input`.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `input.mode` | string | yes | `t2v`, `i2v`, `r2v`, or aliases `wan22-t2v`, `wan22-i2v`, `wan22-flf2v`. |
+| `input.mode` | string | yes | `t2v`, `i2v`, `r2v`, `hunyuan-t2v`, `hunyuan-i2v`, or aliases `wan22-t2v`, `wan22-i2v`, `wan22-flf2v`. |
 | `input.prompt` | string | yes | Positive prompt injected into the selected Wan2.2 workflow. |
 | `input.negative_prompt` | string | no | Negative prompt. Defaults to an empty string. |
 | `input.resolution` | string | no | `480p`, `720p`, `1080p`. Defaults to `720p`. |
@@ -218,7 +223,7 @@ curl -X POST \
 
 ## Common Errors
 
-`Missing or invalid 'mode'. Supported values: 't2v', 'i2v', 'r2v', 'wan22-t2v', 'wan22-i2v', 'wan22-flf2v'`
+`Missing or invalid 'mode'. Supported values: 't2v', 'i2v', 'r2v', 'wan22-t2v', 'wan22-i2v', 'wan22-flf2v', 'hunyuan-t2v', 'hunyuan-i2v'`
 
 The request body is missing `input.mode`, or the endpoint is receiving only the inner object without the RunPod `input` wrapper.
 

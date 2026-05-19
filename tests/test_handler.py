@@ -88,6 +88,12 @@ class TestRunpodWorkerComfy(unittest.TestCase):
                 "WAN22_R2V_WORKFLOW_PATH": os.path.join(
                     REPO_ROOT, "test_resources/workflows/wan22_video_test_flf2v.json"
                 ),
+                "HUNYUAN_T2V_WORKFLOW_PATH": os.path.join(
+                    REPO_ROOT, "test_resources/workflows/hunyuan_video_test_t2v.json"
+                ),
+                "HUNYUAN_I2V_WORKFLOW_PATH": os.path.join(
+                    REPO_ROOT, "test_resources/workflows/hunyuan_video_test_i2v.json"
+                ),
                 "BUCKET_ENDPOINT_URL": "https://bucket.example.com",
             },
         )
@@ -149,6 +155,75 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         )
         self.assertEqual(validated_data["workflow"]["55"]["inputs"]["length"], 81)
         self.assertEqual(validated_data["workflow"]["57"]["inputs"]["noise_seed"], 42)
+
+    def test_hunyuan_t2v_alias_builds_hunyuan_workflow(self):
+        input_data = {
+            "mode": "hunyuan-t2v",
+            "prompt": "a glass apple rotating on a studio table",
+            "negative_prompt": "blur",
+            "resolution": "480p",
+            "aspect_ratio": "1:1",
+            "options": {"fps": 24, "steps": 30, "guidance_scale": 6.5, "length": 97},
+            "seed": 42,
+            "hf_token": "hf-request-token",
+        }
+
+        validated_data, error = handler.validate_input(input_data)
+
+        self.assertIsNone(error)
+        self.assertEqual(validated_data["meta"]["mode"], "t2v")
+        self.assertEqual(validated_data["meta"]["model"], "hunyuanvideo-1.5")
+        workflow = validated_data["workflow"]
+        self.assertEqual(workflow["1"]["inputs"]["resolution"], "480p")
+        self.assertEqual(workflow["1"]["inputs"]["task"], "t2v")
+        self.assertEqual(workflow["1"]["inputs"]["hf_token"], "hf-request-token")
+        self.assertEqual(workflow["2"]["inputs"]["prompt"], input_data["prompt"])
+        self.assertEqual(
+            workflow["2"]["inputs"]["negative_prompt"], input_data["negative_prompt"]
+        )
+        self.assertEqual(workflow["2"]["inputs"]["video_length"], 97)
+        self.assertEqual(workflow["2"]["inputs"]["num_inference_steps"], 30)
+        self.assertEqual(workflow["2"]["inputs"]["guidance_scale"], 6.5)
+        self.assertEqual(workflow["2"]["inputs"]["aspect_ratio"], "1:1")
+        self.assertEqual(workflow["2"]["inputs"]["seed"], 42)
+        self.assertEqual(
+            workflow["4"]["inputs"]["filename_prefix"], "video/hunyuan_t2v"
+        )
+
+    def test_hunyuan_i2v_alias_accepts_start_frame(self):
+        input_data = {
+            "mode": "hunyuan-i2v",
+            "prompt": "animate the portrait",
+            "start_frame": "data:image/png;base64,ZmFrZQ==",
+            "start_frame_name": "portrait.png",
+        }
+
+        validated_data, error = handler.validate_input(input_data)
+
+        self.assertIsNone(error)
+        self.assertEqual(validated_data["meta"]["mode"], "i2v")
+        self.assertEqual(validated_data["meta"]["model"], "hunyuanvideo-1.5")
+        self.assertEqual(
+            validated_data["images"],
+            [{"name": "portrait.png", "image": input_data["start_frame"]}],
+        )
+        self.assertEqual(
+            validated_data["workflow"]["2"]["inputs"]["image"], "portrait.png"
+        )
+        self.assertEqual(validated_data["workflow"]["1"]["inputs"]["task"], "i2v")
+
+    def test_hunyuan_rejects_1080p_resolution(self):
+        validated_data, error = handler.validate_input(
+            {
+                "mode": "hunyuan-t2v",
+                "prompt": "clean cinematic motion",
+                "resolution": "1080p",
+            }
+        )
+
+        self.assertIsNone(validated_data)
+        self.assertEqual(error["code"], "VALIDATION_ERROR")
+        self.assertIn("480p, 720p", error["message"])
 
     def test_video_input_passes_per_request_comfy_org_api_key(self):
         input_data = {
@@ -445,7 +520,7 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertIn("umt5_xxl_fp8_e4m3fn_scaled.safetensors", error["message"])
 
     @patch("handler.check_server")
-    @patch("handler._check_wan22_model_assets")
+    @patch("handler._check_video_model_assets")
     def test_handler_returns_missing_model_before_server_check(
         self, mock_preflight, mock_check_server
     ):
@@ -463,6 +538,19 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
         self.assertEqual(result["error"]["code"], "MODEL_ASSET_MISSING")
         mock_check_server.assert_not_called()
+
+    @patch("handler.check_server", return_value=False)
+    @patch("handler._check_video_model_assets", return_value=(True, None))
+    def test_handler_preflights_hunyuan_model_by_model_name(
+        self, mock_preflight, mock_check_server
+    ):
+        result = handler.handler(
+            {"id": "job-1", "input": {"mode": "hunyuan-t2v", "prompt": "test video"}}
+        )
+
+        mock_preflight.assert_called_once_with("hunyuanvideo-1.5")
+        mock_check_server.assert_called_once()
+        self.assertIn("error", result)
 
     def test_invalid_json_string_input(self):
         validated_data, error = handler.validate_input("invalid json")
