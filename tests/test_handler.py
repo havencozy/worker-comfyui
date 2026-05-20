@@ -74,6 +74,33 @@ import handler
 
 
 RUNPOD_WORKER_COMFY_TEST_RESOURCES_IMAGES = "./test_resources/images"
+MULTI_I2I_SLOTS = [
+    {"ref": "43", "vae": "44", "load": "46"},
+    {"ref": "53", "vae": "54", "load": "56"},
+    {"ref": "63", "vae": "64", "load": "66"},
+    {"ref": "73", "vae": "74", "load": "76"},
+    {"ref": "83", "vae": "84", "load": "86"},
+]
+
+
+def _assert_multi_i2i_chain(test_case, workflow, expected_refs):
+    previous = "26"
+    for ref_node in expected_refs:
+        test_case.assertEqual(
+            workflow[ref_node]["inputs"]["conditioning"],
+            [previous, 0],
+        )
+        previous = ref_node
+    test_case.assertEqual(workflow["22"]["inputs"]["conditioning"], [previous, 0])
+    handler.validate_no_dangling_links(workflow)
+
+
+def _load_image_names(workflow):
+    return {
+        node_id: node["inputs"]["image"]
+        for node_id, node in workflow.items()
+        if node.get("class_type") == "LoadImage"
+    }
 
 
 class TestRunpodWorkerComfy(unittest.TestCase):
@@ -167,16 +194,16 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         workflow = validated_data["workflow"]
         self.assertEqual(
             validated_data["images"],
-            [{"name": "portrait.png", "image": input_data["image"]}],
+            [{"name": "user_input_1.png", "image": input_data["image"]}],
         )
         self.assertEqual(validated_data["selected_model"], "flux2-klein-multi")
         self.assertEqual(workflow["6"]["inputs"]["text"], input_data["prompt"])
-        self.assertEqual(workflow["46"]["inputs"]["image"], "portrait.png")
+        self.assertEqual(workflow["46"]["inputs"]["image"], "user_input_1.png")
         self.assertNotIn("56", workflow)
         self.assertNotIn("66", workflow)
         self.assertNotIn("76", workflow)
         self.assertNotIn("86", workflow)
-        self.assertEqual(workflow["22"]["inputs"]["conditioning"], ["43", 0])
+        _assert_multi_i2i_chain(self, workflow, ["43"])
         self.assertEqual(workflow["47"]["inputs"]["width"], ["72", 0])
         self.assertEqual(workflow["47"]["inputs"]["height"], ["72", 1])
         self.assertEqual(workflow["47"]["inputs"]["batch_size"], 3)
@@ -192,9 +219,12 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
         self.assertIsNone(error)
         workflow = validated_data["workflow"]
-        self.assertEqual(validated_data["images"], input_data["images"])
-        self.assertEqual(workflow["46"]["inputs"]["image"], "input.png")
-        self.assertEqual(workflow["22"]["inputs"]["conditioning"], ["43", 0])
+        self.assertEqual(
+            validated_data["images"],
+            [{"name": "user_input_1.png", "image": "ZmFrZQ=="}],
+        )
+        self.assertEqual(workflow["46"]["inputs"]["image"], "user_input_1.png")
+        _assert_multi_i2i_chain(self, workflow, ["43"])
         self.assertNotIn("56", workflow)
 
     def test_valid_i2i_input_with_multiple_images_uses_multi_reference_workflow(self):
@@ -212,10 +242,17 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
         self.assertIsNone(error)
         workflow = validated_data["workflow"]
-        self.assertEqual(validated_data["images"], input_data["images"])
-        self.assertEqual(workflow["46"]["inputs"]["image"], "monkey.png")
-        self.assertEqual(workflow["56"]["inputs"]["image"], "bicycle.png")
-        self.assertEqual(workflow["66"]["inputs"]["image"], "street.png")
+        self.assertEqual(
+            validated_data["images"],
+            [
+                {"name": "user_input_1.png", "image": "ZmFrZQ=="},
+                {"name": "user_input_2.png", "image": "ZmFrZQ=="},
+                {"name": "user_input_3.png", "image": "ZmFrZQ=="},
+            ],
+        )
+        self.assertEqual(workflow["46"]["inputs"]["image"], "user_input_1.png")
+        self.assertEqual(workflow["56"]["inputs"]["image"], "user_input_2.png")
+        self.assertEqual(workflow["66"]["inputs"]["image"], "user_input_3.png")
         self.assertEqual(
             workflow["38"]["inputs"]["clip_name"],
             "qwen_3_4b.safetensors",
@@ -225,7 +262,58 @@ class TestRunpodWorkerComfy(unittest.TestCase):
             "flux-2-klein-base-4b-fp8.safetensors",
         )
         self.assertNotIn("76", workflow)
-        self.assertEqual(workflow["22"]["inputs"]["conditioning"], ["63", 0])
+        self.assertNotIn("86", workflow)
+        _assert_multi_i2i_chain(self, workflow, ["43", "53", "63"])
+
+    def test_i2i_with_two_images_prunes_slots_3_to_5_and_chains_references(self):
+        input_data = {
+            "mode": "i2i",
+            "prompt": "combine two concepts",
+            "images": [
+                {"name": "first.png", "image": "ZmFrZQ=="},
+                {"name": "second.png", "image": "ZmFrZQ=="},
+            ],
+        }
+
+        validated_data, error = handler.validate_input(input_data)
+
+        self.assertIsNone(error)
+        workflow = validated_data["workflow"]
+        self.assertEqual(
+            _load_image_names(workflow),
+            {"46": "user_input_1.png", "56": "user_input_2.png"},
+        )
+        _assert_multi_i2i_chain(self, workflow, ["43", "53"])
+        for slot in MULTI_I2I_SLOTS[2:]:
+            self.assertNotIn(slot["ref"], workflow)
+            self.assertNotIn(slot["vae"], workflow)
+            self.assertNotIn(slot["load"], workflow)
+
+    def test_i2i_with_five_images_keeps_all_reference_slots(self):
+        input_data = {
+            "mode": "i2i",
+            "prompt": "combine five concepts",
+            "images": [
+                {"name": f"image_{index}.png", "image": "ZmFrZQ=="}
+                for index in range(5)
+            ],
+        }
+
+        validated_data, error = handler.validate_input(input_data)
+
+        self.assertIsNone(error)
+        workflow = validated_data["workflow"]
+        self.assertEqual(
+            _load_image_names(workflow),
+            {
+                "46": "user_input_1.png",
+                "56": "user_input_2.png",
+                "66": "user_input_3.png",
+                "76": "user_input_4.png",
+                "86": "user_input_5.png",
+            },
+        )
+        _assert_multi_i2i_chain(self, workflow, ["43", "53", "63", "73", "83"])
 
     def test_i2i_rejects_more_than_five_images(self):
         input_data = {
@@ -240,7 +328,10 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         validated_data, error = handler.validate_input(input_data)
 
         self.assertIsNone(validated_data)
-        self.assertEqual(error, "i2i supports at most 5 input images")
+        self.assertEqual(
+            error,
+            "flux2-klein-multi supports at most 5 reference images",
+        )
 
     def test_valid_json_string_input(self):
         input_data = '{"mode": "t2i", "prompt": "a clean product render"}'
@@ -274,7 +365,7 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         )
 
         self.assertIsNone(validated_data)
-        self.assertEqual(error, "Missing 'image' (or 'images') parameter for i2i mode")
+        self.assertEqual(error, "i2i mode requires 'image' or non-empty 'images'")
 
     def test_i2i_with_invalid_images_structure(self):
         input_data = {
@@ -289,6 +380,42 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertEqual(
             error, "'images' must be a list of objects with 'name' and 'image' keys"
         )
+
+    def test_handler_returns_structured_validation_error(self):
+        result = handler.handler(
+            {"id": "job-1", "input": {"mode": "i2i", "prompt": "enhance"}}
+        )
+
+        self.assertEqual(
+            result,
+            {
+                "error": {
+                    "message": "i2i mode requires 'image' or non-empty 'images'",
+                }
+            },
+        )
+
+    def test_i2i_with_empty_images_rejects_with_clear_error(self):
+        validated_data, error = handler.validate_input(
+            {"mode": "i2i", "prompt": "enhance", "images": []}
+        )
+
+        self.assertIsNone(validated_data)
+        self.assertEqual(error, "i2i mode requires 'image' or non-empty 'images'")
+
+    def test_validate_no_dangling_links_rejects_missing_node_reference(self):
+        workflow = {
+            "1": {
+                "class_type": "Example",
+                "inputs": {"source": ["missing", 0]},
+            }
+        }
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "Workflow node 1.source links to missing node missing",
+        ):
+            handler.validate_no_dangling_links(workflow)
 
     def test_invalid_json_string_input(self):
         validated_data, error = handler.validate_input("invalid json")

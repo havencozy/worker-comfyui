@@ -301,6 +301,12 @@ def summarize_validated_input(validated_data):
     }
 
 
+def _error_response(message, **extra):
+    error = {"message": str(message)}
+    error.update(extra)
+    return {"error": error}
+
+
 def _resolve_dimensions(
     aspect_ratio, width, height, default_width=1024, default_height=1024
 ):
@@ -365,49 +371,105 @@ def _set_numeric_fields(workflow, width, height, count, options):
             inputs["sampler_name"] = options["sampler_name"]
 
 
-MULTI_I2I_IMAGE_NODE_IDS = ["46", "56", "66", "76", "86"]
-MULTI_I2I_REFERENCE_NODE_IDS = ["43", "53", "63", "73", "83"]
-MULTI_I2I_PRUNABLE_NODE_IDS = [
-    ["56", "54", "53"],
-    ["66", "64", "63"],
-    ["76", "74", "73"],
-    ["86", "84", "83"],
+MULTI_I2I_REFERENCE_SLOTS = [
+    {"ref": "43", "vae": "44", "load": "46"},
+    {"ref": "53", "vae": "54", "load": "56"},
+    {"ref": "63", "vae": "64", "load": "66"},
+    {"ref": "73", "vae": "74", "load": "76"},
+    {"ref": "83", "vae": "84", "load": "86"},
 ]
+MULTI_I2I_START_CONDITIONING_NODE = "26"
+MULTI_I2I_BASIC_GUIDER_NODE = "22"
+
+
+def validate_no_dangling_links(workflow):
+    existing = set(workflow.keys())
+
+    for node_id, node in workflow.items():
+        inputs = node.get("inputs", {})
+        for input_name, value in inputs.items():
+            if (
+                isinstance(value, list)
+                and len(value) == 2
+                and isinstance(value[0], str)
+                and isinstance(value[1], int)
+                and value[0] not in existing
+            ):
+                raise ValueError(
+                    f"Workflow node {node_id}.{input_name} "
+                    f"links to missing node {value[0]}"
+                )
+
+
+def optimize_multi_i2i_workflow(base_workflow, saved_image_names):
+    if not saved_image_names:
+        raise ValueError("i2i mode requires at least one reference image")
+    if len(saved_image_names) > len(MULTI_I2I_REFERENCE_SLOTS):
+        raise ValueError("flux2-klein-multi supports at most 5 reference images")
+
+    workflow = copy.deepcopy(base_workflow)
+    last_conditioning = MULTI_I2I_START_CONDITIONING_NODE
+
+    for index, slot in enumerate(MULTI_I2I_REFERENCE_SLOTS):
+        if index < len(saved_image_names):
+            workflow[slot["load"]]["inputs"]["image"] = saved_image_names[index]
+            workflow[slot["ref"]]["inputs"]["conditioning"] = [last_conditioning, 0]
+            last_conditioning = slot["ref"]
+        else:
+            workflow.pop(slot["ref"], None)
+            workflow.pop(slot["vae"], None)
+            workflow.pop(slot["load"], None)
+
+    workflow[MULTI_I2I_BASIC_GUIDER_NODE]["inputs"]["conditioning"] = [
+        last_conditioning,
+        0,
+    ]
+
+    validate_no_dangling_links(workflow)
+    return workflow
 
 
 def _set_multi_i2i_image_fields(workflow, images):
-    for index, image in enumerate(images):
-        workflow[MULTI_I2I_IMAGE_NODE_IDS[index]]["inputs"]["image"] = image["name"]
+    return optimize_multi_i2i_workflow(
+        workflow,
+        [image["name"] for image in images],
+    )
 
-    for nodes in MULTI_I2I_PRUNABLE_NODE_IDS[len(images) - 1:]:
-        for node_id in nodes:
-            workflow.pop(node_id, None)
 
-    final_reference_node = MULTI_I2I_REFERENCE_NODE_IDS[len(images) - 1]
-    workflow["22"]["inputs"]["conditioning"] = [final_reference_node, 0]
+def _runtime_image_name(index):
+    return f"user_input_{index + 1}.png"
+
+
+def _normalize_i2i_images(images):
+    return [
+        {"name": _runtime_image_name(index), "image": image["image"]}
+        for index, image in enumerate(images)
+    ]
 
 
 def _get_i2i_images(job_input):
     image_value = job_input.get("image")
-    image_name = job_input.get("image_name", "input_image.png")
 
     if image_value:
-        return [{"name": image_name, "image": image_value}], None
+        return [{"name": _runtime_image_name(0), "image": image_value}], None
 
-    if job_input.get("images"):
+    if "images" in job_input:
         images = job_input.get("images")
-        if not isinstance(images, list) or not images or not all(
-            "name" in img and "image" in img for img in images
+        if not images:
+            return None, "i2i mode requires 'image' or non-empty 'images'"
+        if not isinstance(images, list) or not all(
+            isinstance(img, dict) and "name" in img and "image" in img
+            for img in images
         ):
             return (
                 None,
                 "'images' must be a list of objects with 'name' and 'image' keys",
             )
         if len(images) > 5:
-            return None, "i2i supports at most 5 input images"
-        return images, None
+            return None, "flux2-klein-multi supports at most 5 reference images"
+        return _normalize_i2i_images(images), None
 
-    return None, "Missing 'image' (or 'images') parameter for i2i mode"
+    return None, "i2i mode requires 'image' or non-empty 'images'"
 
 
 def _load_model_presets():
@@ -577,7 +639,7 @@ def _build_custom_mode_input(job_input, mode):
     _set_numeric_fields(workflow, width, height, count, options)
 
     if mode == "i2i":
-        _set_multi_i2i_image_fields(workflow, images)
+        workflow = _set_multi_i2i_image_fields(workflow, images)
 
     return {
         "workflow": workflow,
@@ -987,7 +1049,7 @@ def handler(job):
     validated_data, error_message = validate_input(job_input)
     if error_message:
         print(f"worker-comfyui - Input validation failed: {error_message}")
-        return {"error": error_message}
+        return _error_response(error_message)
 
     print(
         "worker-comfyui - Validated input summary: "
@@ -1003,7 +1065,7 @@ def handler(job):
     if selected_model:
         ok, model_error = _ensure_model_assets(selected_model)
         if not ok:
-            return {"error": model_error}
+            return _error_response(model_error)
 
     # Make sure that the ComfyUI HTTP API is available before proceeding
     if not check_server(
@@ -1011,19 +1073,19 @@ def handler(job):
         COMFY_API_AVAILABLE_MAX_RETRIES,
         COMFY_API_AVAILABLE_INTERVAL_MS,
     ):
-        return {
-            "error": f"ComfyUI server ({COMFY_HOST}) not reachable after multiple retries."
-        }
+        return _error_response(
+            f"ComfyUI server ({COMFY_HOST}) not reachable after multiple retries."
+        )
 
     # Upload input images if they exist
     if input_images:
         upload_result = upload_images(input_images)
         if upload_result["status"] == "error":
             # Return upload errors
-            return {
-                "error": "Failed to upload one or more input images",
-                "details": upload_result["details"],
-            }
+            return _error_response(
+                "Failed to upload one or more input images",
+                details=upload_result["details"],
+            )
 
     ws = None
     client_id = str(uuid.uuid4())
@@ -1139,13 +1201,13 @@ def handler(job):
             error_msg = f"Prompt ID {prompt_id} not found in history after execution."
             print(f"worker-comfyui - {error_msg}")
             if not errors:
-                return {"error": error_msg}
+                return _error_response(error_msg)
             else:
                 errors.append(error_msg)
-                return {
-                    "error": "Job processing failed, prompt ID not found in history.",
-                    "details": errors,
-                }
+                return _error_response(
+                    "Job processing failed, prompt ID not found in history.",
+                    details=errors,
+                )
 
         prompt_history = history.get(prompt_id, {})
         outputs = prompt_history.get("outputs", {})
@@ -1260,19 +1322,19 @@ def handler(job):
     except websocket.WebSocketException as e:
         print(f"worker-comfyui - WebSocket Error: {e}")
         print(traceback.format_exc())
-        return {"error": f"WebSocket communication error: {e}"}
+        return _error_response(f"WebSocket communication error: {e}")
     except requests.RequestException as e:
         print(f"worker-comfyui - HTTP Request Error: {e}")
         print(traceback.format_exc())
-        return {"error": f"HTTP communication error with ComfyUI: {e}"}
+        return _error_response(f"HTTP communication error with ComfyUI: {e}")
     except ValueError as e:
         print(f"worker-comfyui - Value Error: {e}")
         print(traceback.format_exc())
-        return {"error": str(e)}
+        return _error_response(str(e))
     except Exception as e:
         print(f"worker-comfyui - Unexpected Handler Error: {e}")
         print(traceback.format_exc())
-        return {"error": f"An unexpected error occurred: {e}"}
+        return _error_response(f"An unexpected error occurred: {e}")
     finally:
         if ws and ws.connected:
             print(f"worker-comfyui - Closing websocket connection.")
@@ -1289,10 +1351,7 @@ def handler(job):
 
     if not output_data and errors:
         print(f"worker-comfyui - Job failed with no output images.")
-        return {
-            "error": "Job processing failed",
-            "details": errors,
-        }
+        return _error_response("Job processing failed", details=errors)
     elif not output_data and not errors:
         print(
             f"worker-comfyui - Job completed successfully, but the workflow produced no images."
