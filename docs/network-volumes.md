@@ -51,7 +51,7 @@ Models must be placed in the following structure on your network volume:
 
 ## Preparing Flux2 Models on a Network Volume
 
-For the custom `t2i` and `i2i` endpoints, prefer storing Flux2 model files on a RunPod Network Volume instead of baking them into the Docker image. This keeps image builds smaller and avoids long `exporting layers` times.
+For the custom `t2i` and multi-reference `i2i` endpoints, prefer storing Flux2 model files on a RunPod Network Volume instead of baking them into the Docker image. This keeps image builds smaller and avoids long `exporting layers` times.
 
 When preparing the volume from a RunPod Pod, the network volume is usually mounted at `/workspace`. The same volume is mounted at `/runpod-volume` inside serverless workers.
 
@@ -62,27 +62,33 @@ Run this once from a Pod attached to the same network volume:
 cd /workspace
 
 # 2. Create the model directories expected by the worker
-mkdir -p models/text_encoders models/diffusion_models models/vae models/loras
+mkdir -p models/text_encoders models/diffusion_models models/vae
 
-# 3. Download Text Encoder (Mistral, used by standard Flux2 t2i/i2i)
+# 3. Download Text Encoder (Qwen 4B, used by multi-reference i2i)
 wget --show-progress \
-  -O models/text_encoders/mistral_3_small_flux2_bf16.safetensors \
-  https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/text_encoders/mistral_3_small_flux2_bf16.safetensors
+  -O models/text_encoders/qwen_3_4b.safetensors \
+  https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors
 
-# 4. Download core Diffusion model (Flux2 Dev FP8)
+# 4. Download Text Encoder (Qwen 8B mixed FP8, used by Klein 9B t2i)
 wget --show-progress \
-  -O models/diffusion_models/flux2_dev_fp8mixed.safetensors \
-  https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/diffusion_models/flux2_dev_fp8mixed.safetensors
+  -O models/text_encoders/qwen_3_8b_fp8mixed.safetensors \
+  https://huggingface.co/Comfy-Org/flux2-klein-9B/resolve/main/split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors
 
-# 5. Download VAE
+# 5. Download core Diffusion model (Flux2 Klein 4B FP8, used by multi-reference i2i)
+wget --show-progress \
+  -O models/diffusion_models/flux-2-klein-base-4b-fp8.safetensors \
+  https://huggingface.co/black-forest-labs/FLUX.2-klein-base-4b-fp8/resolve/main/flux-2-klein-base-4b-fp8.safetensors
+
+# 6. Download core Diffusion model (Flux2 Klein 9B FP8, used by t2i)
+wget --show-progress \
+  -O models/diffusion_models/flux-2-klein-9b-fp8.safetensors \
+  https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-fp8/resolve/main/flux-2-klein-9b-fp8.safetensors
+
+# 7. Download VAE
 wget --show-progress \
   -O models/vae/flux2-vae.safetensors \
   https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors
 
-# 6. Download Turbo LoRA used by the Flux2 image setup
-wget --show-progress \
-  -O models/loras/Flux_2-Turbo-LoRA_comfyui.safetensors \
-  https://huggingface.co/ByteZSzn/Flux.2-Turbo-ComfyUI/resolve/main/Flux_2-Turbo-LoRA_comfyui.safetensors
 ```
 
 Then configure the serverless endpoint with:

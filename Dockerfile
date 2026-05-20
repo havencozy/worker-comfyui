@@ -151,8 +151,7 @@ RUN if [ "$MODEL_TYPE" = "flux1-dev-fp8" ]; then \
 RUN if [ "$MODEL_TYPE" = "flux2-dev" ]; then \
       wget -q -O models/text_encoders/mistral_3_small_flux2_bf16.safetensors https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/text_encoders/mistral_3_small_flux2_bf16.safetensors && \
       wget -q -O models/diffusion_models/flux2_dev_fp8mixed.safetensors https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/diffusion_models/flux2_dev_fp8mixed.safetensors && \
-      wget -q -O models/vae/flux2-vae.safetensors https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors && \
-      wget -q -O models/loras/Flux_2-Turbo-LoRA_comfyui.safetensors https://huggingface.co/ByteZSzn/Flux.2-Turbo-ComfyUI/resolve/main/Flux_2-Turbo-LoRA_comfyui.safetensors; \
+      wget -q -O models/vae/flux2-vae.safetensors https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors; \
     fi
 
 RUN if [ "$MODEL_TYPE" = "z-image-turbo" ]; then \

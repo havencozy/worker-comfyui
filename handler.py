@@ -66,10 +66,7 @@ WORKFLOW_DIR = os.environ.get(
 
 # Built-in custom API workflow templates (override via env if needed)
 FLUX2_T2I_WORKFLOW_PATH = os.environ.get(
-    "FLUX2_T2I_WORKFLOW_PATH", os.path.join(WORKFLOW_DIR, "flux2_t2i.json")
-)
-FLUX2_I2I_WORKFLOW_PATH = os.environ.get(
-    "FLUX2_I2I_WORKFLOW_PATH", os.path.join(WORKFLOW_DIR, "flux2_i2i.json")
+    "FLUX2_T2I_WORKFLOW_PATH", os.path.join(WORKFLOW_DIR, "flux2_klein_t2i.json")
 )
 FLUX2_KLEIN_MULTI_I2I_WORKFLOW_PATH = os.environ.get(
     "FLUX2_KLEIN_MULTI_I2I_WORKFLOW_PATH",
@@ -89,19 +86,14 @@ ASPECT_RATIO_PRESETS = {
 # Presets for quickly switching Flux model assets without changing workflow files.
 # You can override/extend this map via FLUX_MODEL_PRESETS_JSON env var.
 DEFAULT_FLUX_MODEL_PRESETS = {
-    "flux2-dev": {
-        "unet_name": "flux2_dev_fp8mixed.safetensors",
-        "clip_name": "mistral_3_small_flux2_bf16.safetensors",
-        "vae_name": "flux2-vae.safetensors",
-    },
-    "flux2-schnell": {
-        "unet_name": "flux2_schnell_fp8mixed.safetensors",
-        "clip_name": "mistral_3_small_flux2_bf16.safetensors",
+    "flux2-klein-t2i": {
+        "unet_name": "flux-2-klein-9b-fp8.safetensors",
+        "clip_name": "qwen_3_8b_fp8mixed.safetensors",
         "vae_name": "flux2-vae.safetensors",
     },
     "flux2-klein-multi": {
-        "unet_name": "flux2_dev_fp8mixed.safetensors",
-        "clip_name": "mistral_3_small_flux2_bf16.safetensors",
+        "unet_name": "flux-2-klein-base-4b-fp8.safetensors",
+        "clip_name": "qwen_3_4b.safetensors",
         "vae_name": "flux2-vae.safetensors",
     },
 }
@@ -109,28 +101,28 @@ DEFAULT_FLUX_MODEL_PRESETS = {
 # Runtime download manifest (used by API call preflight: check model -> download if missing)
 # Extend/override with FLUX_MODEL_ASSETS_JSON env.
 DEFAULT_FLUX_MODEL_ASSETS = {
-    "flux2-dev": [
+    "flux2-klein-t2i": [
         {
-            "path": "models/clip/mistral_3_small_flux2_bf16.safetensors", 
-            "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/text_encoders/mistral_3_small_flux2_bf16.safetensors",
+            "path": "models/text_encoders/qwen_3_8b_fp8mixed.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/flux2-klein-9B/resolve/main/split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors",
         },
         {
-            "path": "models/unet/flux2_dev_fp8mixed.safetensors",
-            "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/diffusion_models/flux2_dev_fp8mixed.safetensors",
+            "path": "models/diffusion_models/flux-2-klein-9b-fp8.safetensors",
+            "url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-fp8/resolve/main/flux-2-klein-9b-fp8.safetensors",
         },
         {
             "path": "models/vae/flux2-vae.safetensors",
             "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors",
-        }
+        },
     ],
     "flux2-klein-multi": [
         {
-            "path": "models/clip/mistral_3_small_flux2_bf16.safetensors",
-            "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/text_encoders/mistral_3_small_flux2_bf16.safetensors",
+            "path": "models/text_encoders/qwen_3_4b.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors",
         },
         {
-            "path": "models/unet/flux2_dev_fp8mixed.safetensors",
-            "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/diffusion_models/flux2_dev_fp8mixed.safetensors",
+            "path": "models/diffusion_models/flux-2-klein-base-4b-fp8.safetensors",
+            "url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-base-4b-fp8/resolve/main/flux-2-klein-base-4b-fp8.safetensors",
         },
         {
             "path": "models/vae/flux2-vae.safetensors",
@@ -373,14 +365,6 @@ def _set_numeric_fields(workflow, width, height, count, options):
             inputs["sampler_name"] = options["sampler_name"]
 
 
-def _set_i2i_image_fields(workflow, image_name):
-    for node in workflow.values():
-        inputs = node.get("inputs", {})
-        class_type = node.get("class_type", "")
-        if class_type == "LoadImage" and "image" in inputs:
-            inputs["image"] = image_name
-
-
 MULTI_I2I_IMAGE_NODE_IDS = ["46", "56", "66", "76", "86"]
 MULTI_I2I_REFERENCE_NODE_IDS = ["43", "53", "63", "73", "83"]
 MULTI_I2I_PRUNABLE_NODE_IDS = [
@@ -523,16 +507,18 @@ def _apply_model_preset(workflow, model_name):
 
 def _build_custom_mode_input(job_input, mode):
     images = None
-    workflow_path = (
-        FLUX2_T2I_WORKFLOW_PATH if mode == "t2i" else FLUX2_I2I_WORKFLOW_PATH
-    )
+    workflow_path = FLUX2_T2I_WORKFLOW_PATH
 
     if mode == "i2i":
         images, image_error = _get_i2i_images(job_input)
         if image_error:
             return None, image_error
-        if len(images) > 1:
-            workflow_path = FLUX2_KLEIN_MULTI_I2I_WORKFLOW_PATH
+        if len(images) == 1:
+            return (
+                None,
+                "Single-image i2i workflow is not configured; send 2-5 images for multi-reference i2i",
+            )
+        workflow_path = FLUX2_KLEIN_MULTI_I2I_WORKFLOW_PATH
 
     try:
         workflow = _load_workflow_template(workflow_path)
@@ -572,6 +558,8 @@ def _build_custom_mode_input(job_input, mode):
     )
 
     model_name = options.get("model") or job_input.get("model")
+    if mode == "t2i" and model_name in [None, "flux2-dev"]:
+        model_name = "flux2-klein-t2i"
     if mode == "i2i" and images and len(images) > 1:
         if model_name in [None, "flux2-dev"]:
             model_name = "flux2-klein-multi"
@@ -583,10 +571,7 @@ def _build_custom_mode_input(job_input, mode):
     _set_numeric_fields(workflow, width, height, count, options)
 
     if mode == "i2i":
-        if len(images) == 1:
-            _set_i2i_image_fields(workflow, images[0]["name"])
-        else:
-            _set_multi_i2i_image_fields(workflow, images)
+        _set_multi_i2i_image_fields(workflow, images)
 
     return {
         "workflow": workflow,

@@ -1,7 +1,7 @@
 {
   "input": {
     "mode": "t2i",
-    "model": "flux2-dev",
+    "model": "flux2-klein-t2i",
     "prompt": "a premium product photo of a matte black wireless headphone on brushed steel, softbox lighting, crisp details",
     "negative_prompt": "blurry, low quality, distorted, text, watermark",
     "aspect_ratio": "3:2",

@@ -46,24 +46,24 @@ All requests must wrap the custom payload under `input`.
 | `input.mode` | string | yes | Supported values: `t2i`, `i2i`. |
 | `input.prompt` | string | yes | Positive prompt injected into the selected workflow template. |
 | `input.negative_prompt` | string | no | Used only when the workflow template contains a negative prompt node. |
-| `input.model` | string | no | Optional model preset. Current built-in preset with runtime asset manifest: `flux2-dev`. |
+| `input.model` | string | no | Optional model preset. Built-in presets: `flux2-klein-t2i`, `flux2-klein-multi`. |
 | `input.aspect_ratio` | string | no | Supported presets: `1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `3:2`, `2:3`. |
 | `input.width` | integer | no | Explicit output width. Must be sent with `height`. Overrides `aspect_ratio`. |
 | `input.height` | integer | no | Explicit output height. Must be sent with `width`. Overrides `aspect_ratio`. |
 | `input.count` | integer | no | Batch size. Defaults to `1`; must be `>= 1`. |
-| `input.image` | string | i2i only | Base64 image. Data URI prefix is supported. |
+| `input.image` | string | reserved | Single-image i2i is currently disabled until a replacement workflow is added. |
 | `input.image_name` | string | no | Filename used when uploading `input.image`. Defaults to `input_image.png`. |
-| `input.images` | array | no | Image upload array for i2i. One image uses the standard workflow; 2-5 images use the multi-reference workflow. |
+| `input.images` | array | i2i only | Image upload array for i2i. Send 2-5 images to use the multi-reference workflow. |
 | `input.options` | object | no | Optional sampler overrides: `steps`, `seed`, `cfg`, `denoise`, `sampler_name`, `model`. |
 | `input.comfy_org_api_key` | string | no | Per-request Comfy.org API key. Overrides `COMFY_ORG_API_KEY`. |
 
 Notes:
 
 - `t2i` defaults to `1024x1024` when no size is provided.
-- `i2i` preserves the source image size by default. Send `aspect_ratio` or `width`/`height` only when you want to resize.
-- `i2i` accepts at most 5 images. Send 2-5 images to use the multi-reference workflow.
+- Single-image `i2i` is currently disabled until a replacement workflow is added.
+- `i2i` accepts 2-5 images for the multi-reference workflow.
 - `input.model` and `input.options.model` are equivalent; `options.model` wins if both are present.
-- Do not send `input.workflow`; this API builds the workflow internally from `workflows/flux2_t2i.json` or `workflows/flux2_i2i.json`.
+- Do not send `input.workflow`; this API builds the workflow internally from `workflows/flux2_klein_t2i.json` or `workflows/flux2_klein_multi_i2i.json`.
 
 ## Sample Payloads
 
@@ -93,7 +93,7 @@ Image-to-image:
 curl -X POST \
   -H "Authorization: Bearer <runpod_api_key>" \
   -H "Content-Type: application/json" \
-  --data @sample_payloads/i2i-minimal.json \
+  --data @sample_payloads/i2i-multi-reference.json \
   https://api.runpod.ai/v2/<endpoint_id>/runsync
 ```
 
@@ -104,9 +104,6 @@ Available sample files:
 | `sample_payloads/t2i-minimal.json` | Smallest valid text-to-image request. |
 | `sample_payloads/t2i-advanced.json` | Text-to-image with model preset, size preset, seed, steps, CFG, sampler. |
 | `sample_payloads/t2i-explicit-size.json` | Text-to-image with explicit `width` and `height`. |
-| `sample_payloads/i2i-minimal.json` | Smallest valid image-to-image request with inline base64 image. |
-| `sample_payloads/i2i-advanced.json` | Image-to-image with model preset and sampler options. |
-| `sample_payloads/i2i-legacy-images-array.json` | Image-to-image using the legacy `images` array shape. |
 | `sample_payloads/i2i-multi-reference.json` | Image-to-image using 2 reference images. |
 
 ## Expected Response
@@ -151,7 +148,7 @@ Send no more than 5 objects in `input.images`.
 
 `Unsupported model '<name>'`
 
-Use `flux2-dev`, or configure `FLUX_MODEL_PRESETS_JSON` and `FLUX_MODEL_ASSETS_JSON` for another model.
+Use `flux2-klein-t2i` for t2i, `flux2-klein-multi` for multi-reference i2i, or configure `FLUX_MODEL_PRESETS_JSON` and `FLUX_MODEL_ASSETS_JSON` for another model.
 
 `Failed downloading ...`
 

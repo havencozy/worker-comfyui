@@ -97,6 +97,15 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         workflow = validated_data["workflow"]
         self.assertIsNone(validated_data["images"])
         self.assertEqual(workflow["6"]["inputs"]["text"], input_data["prompt"])
+        self.assertEqual(validated_data["selected_model"], "flux2-klein-t2i")
+        self.assertEqual(
+            workflow["12"]["inputs"]["unet_name"],
+            "flux-2-klein-9b-fp8.safetensors",
+        )
+        self.assertEqual(
+            workflow["38"]["inputs"]["clip_name"],
+            "qwen_3_8b_fp8mixed.safetensors",
+        )
         self.assertEqual(workflow["47"]["inputs"]["width"], 1344)
         self.assertEqual(workflow["47"]["inputs"]["height"], 768)
         self.assertEqual(workflow["47"]["inputs"]["batch_size"], 2)
@@ -105,9 +114,28 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertEqual(workflow["26"]["inputs"]["guidance"], 3.5)
         self.assertEqual(workflow["16"]["inputs"]["sampler_name"], "ddim")
 
-    def test_valid_i2i_input_uploads_image_and_preserves_source_dimensions_by_default(
-        self,
-    ):
+    def test_t2i_flux2_dev_model_request_uses_klein_t2i_preset(self):
+        input_data = {
+            "mode": "t2i",
+            "model": "flux2-dev",
+            "prompt": "a clean product render",
+        }
+
+        validated_data, error = handler.validate_input(input_data)
+
+        self.assertIsNone(error)
+        workflow = validated_data["workflow"]
+        self.assertEqual(validated_data["selected_model"], "flux2-klein-t2i")
+        self.assertEqual(
+            workflow["12"]["inputs"]["unet_name"],
+            "flux-2-klein-9b-fp8.safetensors",
+        )
+        self.assertEqual(
+            workflow["38"]["inputs"]["clip_name"],
+            "qwen_3_8b_fp8mixed.safetensors",
+        )
+
+    def test_single_image_i2i_is_disabled_until_replacement_workflow(self):
         input_data = {
             "mode": "i2i",
             "prompt": "preserve identity with cinematic color",
@@ -118,19 +146,13 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
         validated_data, error = handler.validate_input(input_data)
 
-        self.assertIsNone(error)
-        workflow = validated_data["workflow"]
+        self.assertIsNone(validated_data)
         self.assertEqual(
-            validated_data["images"],
-            [{"name": "portrait.png", "image": input_data["image"]}],
+            error,
+            "Single-image i2i workflow is not configured; send 2-5 images for multi-reference i2i",
         )
-        self.assertEqual(workflow["6"]["inputs"]["text"], input_data["prompt"])
-        self.assertEqual(workflow["46"]["inputs"]["image"], "portrait.png")
-        self.assertEqual(workflow["47"]["inputs"]["width"], ["72", 0])
-        self.assertEqual(workflow["47"]["inputs"]["height"], ["72", 1])
-        self.assertEqual(workflow["47"]["inputs"]["batch_size"], 3)
 
-    def test_valid_i2i_input_accepts_legacy_images_array_for_upload_only(self):
+    def test_single_image_images_array_is_disabled_until_replacement_workflow(self):
         input_data = {
             "mode": "i2i",
             "prompt": "enhance details",
@@ -139,12 +161,11 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
         validated_data, error = handler.validate_input(input_data)
 
-        self.assertIsNone(error)
-        self.assertEqual(validated_data["images"], input_data["images"])
         self.assertEqual(
-            validated_data["workflow"]["46"]["inputs"]["image"],
-            "input.png",
+            error,
+            "Single-image i2i workflow is not configured; send 2-5 images for multi-reference i2i",
         )
+        self.assertIsNone(validated_data)
 
     def test_valid_i2i_input_with_multiple_images_uses_multi_reference_workflow(self):
         input_data = {
@@ -167,9 +188,12 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertEqual(workflow["66"]["inputs"]["image"], "street.png")
         self.assertEqual(
             workflow["38"]["inputs"]["clip_name"],
-            "mistral_3_small_flux2_bf16.safetensors",
+            "qwen_3_4b.safetensors",
         )
-        self.assertEqual(workflow["12"]["inputs"]["unet_name"], "flux2_dev_fp8mixed.safetensors")
+        self.assertEqual(
+            workflow["12"]["inputs"]["unet_name"],
+            "flux-2-klein-base-4b-fp8.safetensors",
+        )
         self.assertNotIn("76", workflow)
         self.assertEqual(workflow["22"]["inputs"]["conditioning"], ["63", 0])
 
@@ -206,9 +230,12 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertEqual(validated_data["selected_model"], "flux2-klein-multi")
         self.assertEqual(
             workflow["38"]["inputs"]["clip_name"],
-            "mistral_3_small_flux2_bf16.safetensors",
+            "qwen_3_4b.safetensors",
         )
-        self.assertEqual(workflow["12"]["inputs"]["unet_name"], "flux2_dev_fp8mixed.safetensors")
+        self.assertEqual(
+            workflow["12"]["inputs"]["unet_name"],
+            "flux-2-klein-base-4b-fp8.safetensors",
+        )
 
     def test_valid_json_string_input(self):
         input_data = '{"mode": "t2i", "prompt": "a clean product render"}'

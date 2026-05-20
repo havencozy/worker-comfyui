@@ -38,7 +38,7 @@ These images are available on Docker Hub under `runpod/worker-comfyui`:
 - **`runpod/worker-comfyui:<version>-base`**: Clean ComfyUI install with no models.
 - **`runpod/worker-comfyui:<version>-flux1-schnell`**: Includes checkpoint, text encoders, and VAE for [FLUX.1 schnell](https://huggingface.co/black-forest-labs/FLUX.1-schnell).
 - **`runpod/worker-comfyui:<version>-flux1-dev`**: Includes checkpoint, text encoders, and VAE for [FLUX.1 dev](https://huggingface.co/black-forest-labs/FLUX.1-dev).
-- **`runpod/worker-comfyui:<version>-flux2-dev`**: Includes model files used by the built-in Flux2 `t2i` and `i2i` templates.
+- **`runpod/worker-comfyui:<version>-flux2-dev`**: Legacy image that included the old Flux2 Dev templates.
 - **`runpod/worker-comfyui:<version>-sdxl`**: Includes checkpoint and VAEs for [Stable Diffusion XL](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0).
 - **`runpod/worker-comfyui:<version>-sd3`**: Includes checkpoint for [Stable Diffusion 3 medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium).
 
@@ -81,9 +81,9 @@ The following tables describe the fields within the `input` object:
 | `input.width`             | Integer | No       | Explicit output width. Must be paired with `input.height`. Overrides `aspect_ratio`.                                           |
 | `input.height`            | Integer | No       | Explicit output height. Must be paired with `input.width`. Overrides `aspect_ratio`.                                          |
 | `input.count`             | Integer | No       | Batch size. Defaults to `1`.                                                                                                  |
-| `input.image`             | String  | i2i only | Base64 input image for `i2i`. A data URI prefix is optional.                                                                  |
+| `input.image`             | String  | Reserved | Single-image `i2i` is currently disabled until a replacement workflow is added.                                               |
 | `input.image_name`        | String  | No       | Filename used when uploading `input.image` to ComfyUI. Defaults to `input_image.png`.                                         |
-| `input.images`            | Array   | No       | Image upload array for `i2i`. One image uses the standard i2i workflow; 2-5 images use the multi-reference workflow.          |
+| `input.images`            | Array   | No       | Image upload array for `i2i`. Send 2-5 images to use the multi-reference workflow. Single-image i2i is currently disabled.   |
 | `input.options`           | Object  | No       | Optional sampler fields: `steps`, `seed`, `cfg`, `denoise`, and `sampler_name`.                                                |
 | `input.comfy_org_api_key` | String  | No       | Optional per-request Comfy.org API key for API Nodes. Overrides the `COMFY_ORG_API_KEY` environment variable if both are set. |
 
@@ -169,20 +169,7 @@ curl -X POST \
   https://api.runpod.ai/v2/<endpoint_id>/runsync
 ```
 
-For image-to-image, send `mode: "i2i"` and include either `image` plus optional `image_name`, or the `images` array. One input image uses the standard i2i workflow; 2-5 images use the Flux2 Klein multi-reference workflow:
-
-```json
-{
-  "input": {
-    "mode": "i2i",
-    "prompt": "preserve identity, cinematic color grading",
-    "image": "data:image/png;base64,iVBOR...",
-    "image_name": "input_image.png"
-  }
-}
-```
-
-Multiple image references:
+For image-to-image, send `mode: "i2i"` with an `images` array containing 2-5 images. Single-image i2i is currently disabled until a replacement workflow is added:
 
 ```json
 {
@@ -217,7 +204,7 @@ To replace a built-in template:
 
 1.  Open ComfyUI in your browser.
 2.  In the top navigation, select `Workflow > Export (API)`
-3.  Save the exported JSON over `workflows/flux2_t2i.json` or `workflows/flux2_i2i.json`.
+3.  Save the exported JSON over `workflows/flux2_klein_t2i.json` or `workflows/flux2_klein_multi_i2i.json`.
 4.  Rebuild the Docker image.
 
 ## SSH Access

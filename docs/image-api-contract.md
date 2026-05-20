@@ -48,7 +48,7 @@ All generation parameters must be wrapped under `input`.
 {
   "input": {
     "mode": "t2i",
-    "model": "flux2-dev",
+    "model": "flux2-klein-t2i",
     "prompt": "a premium product photo of matte black wireless headphones on brushed steel",
     "negative_prompt": "blurry, low quality, distorted, text, watermark",
     "aspect_ratio": "3:2",
@@ -70,23 +70,22 @@ All generation parameters must be wrapped under `input`.
 | `input.mode` | string | yes | none | `t2i` or `i2i`. |
 | `input.prompt` | string | yes | none | Positive prompt. Must be non-empty. |
 | `input.negative_prompt` | string | no | workflow default | Negative prompt. Used only when the workflow contains a negative prompt node. |
-| `input.model` | string | no | workflow default | Model preset. Built-in preset with runtime asset manifest: `flux2-dev`. |
-| `input.aspect_ratio` | string | no | `1:1` for `t2i`; source size for `i2i` | Preset size. Supported: `1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `3:2`, `2:3`. |
+| `input.model` | string | no | mode default | Model preset. Built-in presets with runtime asset manifests: `flux2-klein-t2i`, `flux2-klein-multi`. |
+| `input.aspect_ratio` | string | no | `1:1` for `t2i`; source size for multi-reference `i2i` | Preset size. Supported: `1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `3:2`, `2:3`. |
 | `input.width` | integer | no | mode default | Explicit output width. Send with `height`. Overrides `aspect_ratio` only when both are present. |
 | `input.height` | integer | no | mode default | Explicit output height. Send with `width`. Overrides `aspect_ratio` only when both are present. |
 | `input.count` | integer | no | `1` | Batch size. Must be `>= 1`. |
-| `input.image` | string | `i2i` option | none | Base64 input image. Data URI prefix is supported. |
+| `input.image` | string | reserved | none | Single-image i2i is currently disabled until a replacement workflow is added. |
 | `input.image_name` | string | no | `input_image.png` | Filename used when uploading `input.image` to ComfyUI. |
-| `input.images` | object[] | `i2i` option | none | Image upload format. One image uses the standard i2i workflow; 2-5 images use the multi-reference workflow. |
+| `input.images` | object[] | `i2i` option | none | Image upload format. Send 2-5 images to use the multi-reference workflow. |
 | `input.comfy_org_api_key` | string | no | env default | Per-request Comfy.org API key override for workflows using ComfyUI API Nodes. |
 | `input.options` | object | no | `{}` | Sampler/model overrides. See [Options](#options). |
 
-For `i2i`, send either:
+For `i2i`, send:
 
-- `input.image` with optional `input.image_name`, or
 - `input.images`, where each item has `name` and `image`.
 
-`input.images` accepts at most 5 images.
+`input.images` accepts 2-5 images. Single-image `i2i` is currently disabled until a replacement workflow is added.
 
 ## Options
 
@@ -134,7 +133,7 @@ With model preset and sampler options:
 {
   "input": {
     "mode": "t2i",
-    "model": "flux2-dev",
+    "model": "flux2-klein-t2i",
     "prompt": "a premium product photo of a matte black wireless headphone on brushed steel, softbox lighting, crisp details",
     "negative_prompt": "blurry, low quality, distorted, text, watermark",
     "aspect_ratio": "3:2",
@@ -171,16 +170,24 @@ With explicit size:
 
 ## Image-To-Image Payloads
 
-Inline base64 image:
+Single-image i2i is currently disabled until a replacement workflow is added. Use the multi-reference `images` array with 2-5 images:
 
 ```json
 {
   "input": {
     "mode": "i2i",
-    "model": "flux2-dev",
-    "prompt": "preserve composition, convert to a polished cinematic portrait, realistic lighting, detailed fabric texture",
-    "image_name": "source.png",
-    "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+    "model": "flux2-klein-multi",
+    "prompt": "make a photo of the monkey riding the bicycle on a city street",
+    "images": [
+      {
+        "name": "monkey.png",
+        "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."
+      },
+      {
+        "name": "bicycle.png",
+        "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."
+      }
+    ],
     "count": 1,
     "options": {
       "steps": 20,
@@ -189,34 +196,6 @@ Inline base64 image:
       "sampler_name": "euler"
     }
   }
-}
-```
-
-The `image` value can be a full data URI:
-
-```text
-data:image/png;base64,<BASE64_DATA>
-```
-
-or a raw base64 string:
-
-```text
-<BASE64_DATA>
-```
-
-Legacy `images` array:
-
-```json
-{
-  "input": {
-    "mode": "i2i",
-    "prompt": "preserve identity, improve sharpness and color, clean background",
-    "images": [
-      {
-        "name": "input_image.png",
-        "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."
-      }
-    ]
   }
 }
 ```
@@ -397,7 +376,8 @@ Common error messages:
 | `'count' must be an integer` | `input.count` cannot be parsed as an integer. |
 | `'count' must be >= 1` | `input.count` is less than `1`. |
 | `Missing 'image' (or 'images') parameter for i2i mode` | `i2i` request is missing an input image. |
-| `'images' must be a list of objects with 'name' and 'image' keys` | Legacy `images` array has the wrong shape. |
+| `'images' must be a list of objects with 'name' and 'image' keys` | `images` array has the wrong shape. |
+| `Single-image i2i workflow is not configured; send 2-5 images for multi-reference i2i` | Single-image i2i is disabled until a replacement workflow is added. |
 | `i2i supports at most 5 input images` | `input.images` contains more than 5 images. |
 | `Unsupported model '<name>'` | Requested model preset is not configured. |
 | `No runtime asset manifest found for model '<name>'` | Model preset exists nowhere in the runtime asset manifest. |
