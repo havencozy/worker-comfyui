@@ -103,7 +103,7 @@
       },
       "38": {
         "inputs": {
-          "clip_name": "qwen_3_4b.safetensors",
+          "clip_name": "mistral_3_small_flux2_bf16.safetensors",
           "type": "flux2",
           "device": "default"
         },

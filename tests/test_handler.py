@@ -165,7 +165,10 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertEqual(workflow["46"]["inputs"]["image"], "monkey.png")
         self.assertEqual(workflow["56"]["inputs"]["image"], "bicycle.png")
         self.assertEqual(workflow["66"]["inputs"]["image"], "street.png")
-        self.assertEqual(workflow["38"]["inputs"]["clip_name"], "qwen_3_4b.safetensors")
+        self.assertEqual(
+            workflow["38"]["inputs"]["clip_name"],
+            "mistral_3_small_flux2_bf16.safetensors",
+        )
         self.assertEqual(workflow["12"]["inputs"]["unet_name"], "flux2_dev_fp8mixed.safetensors")
         self.assertNotIn("76", workflow)
         self.assertEqual(workflow["22"]["inputs"]["conditioning"], ["63", 0])
@@ -201,7 +204,10 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertIsNone(error)
         workflow = validated_data["workflow"]
         self.assertEqual(validated_data["selected_model"], "flux2-klein-multi")
-        self.assertEqual(workflow["38"]["inputs"]["clip_name"], "qwen_3_4b.safetensors")
+        self.assertEqual(
+            workflow["38"]["inputs"]["clip_name"],
+            "mistral_3_small_flux2_bf16.safetensors",
+        )
         self.assertEqual(workflow["12"]["inputs"]["unet_name"], "flux2_dev_fp8mixed.safetensors")
 
     def test_valid_json_string_input(self):
@@ -263,6 +269,26 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
         self.assertIsNone(validated_data)
         self.assertEqual(error, "Please provide input")
+
+    def test_summarize_job_input_redacts_image_payloads(self):
+        summary = handler.summarize_job_input(
+            {
+                "mode": "i2i",
+                "prompt": "make the monkey ride the bicycle",
+                "image": "data:image/png;base64,ZmFrZQ==",
+                "images": [{"name": "bike.png", "image": "ZmFrZQ=="}],
+                "options": {"seed": 123},
+            }
+        )
+
+        self.assertEqual(summary["mode"], "i2i")
+        self.assertEqual(summary["prompt"], "make the monkey ride the bicycle")
+        self.assertEqual(summary["image"], {"present": True, "length": 30})
+        self.assertEqual(
+            summary["images"],
+            [{"name": "bike.png", "has_image": True, "image_length": 8}],
+        )
+        self.assertEqual(summary["options"], {"seed": 123})
 
     @patch("handler.requests.get")
     def test_check_server_server_up(self, mock_get):

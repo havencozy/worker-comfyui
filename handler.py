@@ -101,7 +101,7 @@ DEFAULT_FLUX_MODEL_PRESETS = {
     },
     "flux2-klein-multi": {
         "unet_name": "flux2_dev_fp8mixed.safetensors",
-        "clip_name": "qwen_3_4b.safetensors",
+        "clip_name": "mistral_3_small_flux2_bf16.safetensors",
         "vae_name": "flux2-vae.safetensors",
     },
 }
@@ -125,8 +125,8 @@ DEFAULT_FLUX_MODEL_ASSETS = {
     ],
     "flux2-klein-multi": [
         {
-            "path": "models/text_encoders/qwen_3_4b.safetensors",
-            "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors",
+            "path": "models/clip/mistral_3_small_flux2_bf16.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/text_encoders/mistral_3_small_flux2_bf16.safetensors",
         },
         {
             "path": "models/unet/flux2_dev_fp8mixed.safetensors",
@@ -266,6 +266,47 @@ def _load_workflow_template(path):
         return copy.deepcopy(data["input"]["workflow"])
 
     return copy.deepcopy(data)
+
+
+def summarize_job_input(job_input):
+    if not isinstance(job_input, dict):
+        return {"type": type(job_input).__name__}
+
+    summary = {}
+    for key, value in job_input.items():
+        if key == "image":
+            summary[key] = {
+                "present": bool(value),
+                "length": len(value) if isinstance(value, str) else None,
+            }
+        elif key == "images" and isinstance(value, list):
+            summary[key] = [
+                {
+                    "name": image.get("name") if isinstance(image, dict) else None,
+                    "has_image": bool(image.get("image"))
+                    if isinstance(image, dict)
+                    else False,
+                    "image_length": len(image.get("image"))
+                    if isinstance(image, dict) and isinstance(image.get("image"), str)
+                    else None,
+                }
+                for image in value
+            ]
+        else:
+            summary[key] = value
+
+    return summary
+
+
+def summarize_validated_input(validated_data):
+    workflow = validated_data.get("workflow") or {}
+    images = validated_data.get("images") or []
+    return {
+        "selected_model": validated_data.get("selected_model"),
+        "image_count": len(images),
+        "image_names": [image.get("name") for image in images],
+        "workflow_node_count": len(workflow),
+    }
 
 
 def _resolve_dimensions(
@@ -946,11 +987,21 @@ def handler(job):
 
     job_input = job["input"]
     job_id = job["id"]
+    print(
+        "worker-comfyui - Job input summary: "
+        f"{json.dumps(summarize_job_input(job_input), ensure_ascii=False)}"
+    )
 
     # Make sure that the input is valid
     validated_data, error_message = validate_input(job_input)
     if error_message:
+        print(f"worker-comfyui - Input validation failed: {error_message}")
         return {"error": error_message}
+
+    print(
+        "worker-comfyui - Validated input summary: "
+        f"{json.dumps(summarize_validated_input(validated_data), ensure_ascii=False)}"
+    )
 
     # Extract validated data
     workflow = validated_data["workflow"]
