@@ -15,6 +15,7 @@ import socket
 import traceback
 import logging
 import copy
+import random
 
 from network_volume import (
     is_network_volume_debug_enabled,
@@ -337,7 +338,13 @@ def _set_prompt_fields(workflow, prompt=None, negative_prompt=None):
                 inputs["text"] = prompt
 
 
+def _generate_default_seed():
+    return random.SystemRandom().randint(0, 2**63 - 1)
+
+
 def _set_numeric_fields(workflow, width, height, count, options):
+    seed = options.get("seed") if "seed" in options else _generate_default_seed()
+
     for node in workflow.values():
         inputs = node.get("inputs", {})
         class_type = node.get("class_type", "")
@@ -352,11 +359,10 @@ def _set_numeric_fields(workflow, width, height, count, options):
         if "steps" in options and "steps" in inputs:
             inputs["steps"] = int(options["steps"])
 
-        if "seed" in options:
-            if "noise_seed" in inputs:
-                inputs["noise_seed"] = int(options["seed"])
-            if "seed" in inputs:
-                inputs["seed"] = int(options["seed"])
+        if "noise_seed" in inputs:
+            inputs["noise_seed"] = int(seed)
+        if "seed" in inputs:
+            inputs["seed"] = int(seed)
 
         if "cfg" in options:
             if "cfg" in inputs:

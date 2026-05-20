@@ -158,6 +158,33 @@ class TestRunpodWorkerComfy(unittest.TestCase):
             "flux-2-klein-9b-fp8.safetensors",
         )
 
+    @patch("handler._generate_default_seed", return_value=777, create=True)
+    def test_t2i_without_seed_generates_default_seed(self, mock_generate_seed):
+        input_data = {
+            "mode": "t2i",
+            "prompt": "a crisp character reference",
+        }
+
+        validated_data, error = handler.validate_input(input_data)
+
+        self.assertIsNone(error)
+        self.assertEqual(validated_data["workflow"]["25"]["inputs"]["noise_seed"], 777)
+        mock_generate_seed.assert_called_once_with()
+
+    @patch("handler._generate_default_seed", return_value=888, create=True)
+    def test_i2i_without_seed_generates_default_seed(self, mock_generate_seed):
+        input_data = {
+            "mode": "i2i",
+            "prompt": "enhance details",
+            "images": [{"name": "input.png", "image": "ZmFrZQ=="}],
+        }
+
+        validated_data, error = handler.validate_input(input_data)
+
+        self.assertIsNone(error)
+        self.assertEqual(validated_data["workflow"]["25"]["inputs"]["noise_seed"], 888)
+        mock_generate_seed.assert_called_once_with()
+
     def test_i2i_unsupported_model_falls_back_to_klein_multi(self):
         input_data = {
             "mode": "i2i",
