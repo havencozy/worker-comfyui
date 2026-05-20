@@ -505,6 +505,22 @@ def _apply_model_preset(workflow, model_name):
     return True, None
 
 
+def _resolve_model_name(mode, requested_model):
+    presets = _load_model_presets()
+    default_model = "flux2-klein-t2i" if mode == "t2i" else "flux2-klein-multi"
+
+    if not requested_model:
+        return default_model
+    if requested_model in presets:
+        return requested_model
+
+    print(
+        "worker-comfyui - Unsupported model "
+        f"'{requested_model}' for {mode}; falling back to '{default_model}'"
+    )
+    return default_model
+
+
 def _build_custom_mode_input(job_input, mode):
     images = None
     workflow_path = FLUX2_T2I_WORKFLOW_PATH
@@ -513,11 +529,6 @@ def _build_custom_mode_input(job_input, mode):
         images, image_error = _get_i2i_images(job_input)
         if image_error:
             return None, image_error
-        if len(images) == 1:
-            return (
-                None,
-                "Single-image i2i workflow is not configured; send 2-5 images for multi-reference i2i",
-            )
         workflow_path = FLUX2_KLEIN_MULTI_I2I_WORKFLOW_PATH
 
     try:
@@ -557,16 +568,11 @@ def _build_custom_mode_input(job_input, mode):
         negative_prompt=job_input.get("negative_prompt"),
     )
 
-    model_name = options.get("model") or job_input.get("model")
-    if mode == "t2i" and model_name is None:
-        model_name = "flux2-klein-t2i"
-    if mode == "i2i" and images and len(images) > 1:
-        if model_name is None:
-            model_name = "flux2-klein-multi"
-    if model_name:
-        ok, model_error = _apply_model_preset(workflow, model_name)
-        if not ok:
-            return None, model_error
+    requested_model = options.get("model") or job_input.get("model")
+    model_name = _resolve_model_name(mode, requested_model)
+    ok, model_error = _apply_model_preset(workflow, model_name)
+    if not ok:
+        return None, model_error
 
     _set_numeric_fields(workflow, width, height, count, options)
 

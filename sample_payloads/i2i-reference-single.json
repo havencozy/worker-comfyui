@@ -1,0 +1,15 @@
+{
+  "input": {
+    "mode": "i2i",
+    "prompt": "preserve identity, enhance details, natural cinematic color grading",
+    "image_name": "input_image.png",
+    "image": "data:image/png;base64,REPLACE_WITH_BASE64",
+    "count": 1,
+    "options": {
+      "steps": 20,
+      "cfg": 4,
+      "seed": 987654321,
+      "sampler_name": "euler"
+    }
+  }
+}

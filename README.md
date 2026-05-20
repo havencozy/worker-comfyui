@@ -80,9 +80,9 @@ The following tables describe the fields within the `input` object:
 | `input.width`             | Integer | No       | Explicit output width. Must be paired with `input.height`. Overrides `aspect_ratio`.                                           |
 | `input.height`            | Integer | No       | Explicit output height. Must be paired with `input.width`. Overrides `aspect_ratio`.                                          |
 | `input.count`             | Integer | No       | Batch size. Defaults to `1`.                                                                                                  |
-| `input.image`             | String  | Reserved | Single-image `i2i` is currently disabled until a replacement workflow is added.                                               |
+| `input.image`             | String  | i2i only | Base64 input image for `i2i`. A data URI prefix is optional.                                                                  |
 | `input.image_name`        | String  | No       | Filename used when uploading `input.image` to ComfyUI. Defaults to `input_image.png`.                                         |
-| `input.images`            | Array   | No       | Image upload array for `i2i`. Send 2-5 images to use the multi-reference workflow. Single-image i2i is currently disabled.   |
+| `input.images`            | Array   | No       | Image upload array for `i2i`. Send 1-5 images to use the Flux2 Klein reference workflow.                                     |
 | `input.options`           | Object  | No       | Optional sampler fields: `steps`, `seed`, `cfg`, `denoise`, and `sampler_name`.                                                |
 | `input.comfy_org_api_key` | String  | No       | Optional per-request Comfy.org API key for API Nodes. Overrides the `COMFY_ORG_API_KEY` environment variable if both are set. |
 
@@ -168,7 +168,7 @@ curl -X POST \
   https://api.runpod.ai/v2/<endpoint_id>/runsync
 ```
 
-For image-to-image, send `mode: "i2i"` with an `images` array containing 2-5 images. Single-image i2i is currently disabled until a replacement workflow is added:
+For image-to-image, send `mode: "i2i"` with either `image` plus optional `image_name`, or an `images` array containing 1-5 images:
 
 ```json
 {

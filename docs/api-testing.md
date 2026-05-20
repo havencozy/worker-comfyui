@@ -51,18 +51,18 @@ All requests must wrap the custom payload under `input`.
 | `input.width` | integer | no | Explicit output width. Must be sent with `height`. Overrides `aspect_ratio`. |
 | `input.height` | integer | no | Explicit output height. Must be sent with `width`. Overrides `aspect_ratio`. |
 | `input.count` | integer | no | Batch size. Defaults to `1`; must be `>= 1`. |
-| `input.image` | string | reserved | Single-image i2i is currently disabled until a replacement workflow is added. |
+| `input.image` | string | i2i only | Base64 image. Data URI prefix is supported. |
 | `input.image_name` | string | no | Filename used when uploading `input.image`. Defaults to `input_image.png`. |
-| `input.images` | array | i2i only | Image upload array for i2i. Send 2-5 images to use the multi-reference workflow. |
+| `input.images` | array | i2i only | Image upload array for i2i. Send 1-5 images to use the Flux2 Klein reference workflow. |
 | `input.options` | object | no | Optional sampler overrides: `steps`, `seed`, `cfg`, `denoise`, `sampler_name`, `model`. |
 | `input.comfy_org_api_key` | string | no | Per-request Comfy.org API key. Overrides `COMFY_ORG_API_KEY`. |
 
 Notes:
 
 - `t2i` defaults to `1024x1024` when no size is provided.
-- Single-image `i2i` is currently disabled until a replacement workflow is added.
-- `i2i` accepts 2-5 images for the multi-reference workflow.
+- `i2i` accepts 1-5 images and uses the Flux2 Klein reference workflow.
 - `input.model` and `input.options.model` are equivalent; `options.model` wins if both are present.
+- Unsupported `input.model` values fall back to the mode default.
 - Do not send `input.workflow`; this API builds the workflow internally from `workflows/flux2_klein_t2i.json` or `workflows/flux2_klein_multi_i2i.json`.
 
 ## Sample Payloads
@@ -104,6 +104,7 @@ Available sample files:
 | `sample_payloads/t2i-minimal.json` | Smallest valid text-to-image request. |
 | `sample_payloads/t2i-advanced.json` | Text-to-image with model preset, size preset, seed, steps, CFG, sampler. |
 | `sample_payloads/t2i-explicit-size.json` | Text-to-image with explicit `width` and `height`. |
+| `sample_payloads/i2i-reference-single.json` | Image-to-image using 1 reference image. |
 | `sample_payloads/i2i-multi-reference.json` | Image-to-image using 2 reference images. |
 
 ## Expected Response
@@ -145,10 +146,6 @@ For `mode: "i2i"`, send either `input.image` or `input.images`.
 `i2i supports at most 5 input images`
 
 Send no more than 5 objects in `input.images`.
-
-`Unsupported model '<name>'`
-
-Use `flux2-klein-t2i` for t2i, `flux2-klein-multi` for multi-reference i2i, or configure `FLUX_MODEL_PRESETS_JSON` and `FLUX_MODEL_ASSETS_JSON` for another model.
 
 `Failed downloading ...`
 

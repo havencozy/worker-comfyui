@@ -71,21 +71,25 @@ All generation parameters must be wrapped under `input`.
 | `input.prompt` | string | yes | none | Positive prompt. Must be non-empty. |
 | `input.negative_prompt` | string | no | workflow default | Negative prompt. Used only when the workflow contains a negative prompt node. |
 | `input.model` | string | no | mode default | Model preset. Built-in presets with runtime asset manifests: `flux2-klein-t2i`, `flux2-klein-multi`. |
-| `input.aspect_ratio` | string | no | `1:1` for `t2i`; source size for multi-reference `i2i` | Preset size. Supported: `1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `3:2`, `2:3`. |
+| `input.aspect_ratio` | string | no | `1:1` for `t2i`; source size for `i2i` | Preset size. Supported: `1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `3:2`, `2:3`. |
 | `input.width` | integer | no | mode default | Explicit output width. Send with `height`. Overrides `aspect_ratio` only when both are present. |
 | `input.height` | integer | no | mode default | Explicit output height. Send with `width`. Overrides `aspect_ratio` only when both are present. |
 | `input.count` | integer | no | `1` | Batch size. Must be `>= 1`. |
-| `input.image` | string | reserved | none | Single-image i2i is currently disabled until a replacement workflow is added. |
+| `input.image` | string | `i2i` option | none | Base64 input image. Data URI prefix is supported. |
 | `input.image_name` | string | no | `input_image.png` | Filename used when uploading `input.image` to ComfyUI. |
-| `input.images` | object[] | `i2i` option | none | Image upload format. Send 2-5 images to use the multi-reference workflow. |
+| `input.images` | object[] | `i2i` option | none | Image upload format. Send 1-5 images to use the Flux2 Klein reference workflow. |
 | `input.comfy_org_api_key` | string | no | env default | Per-request Comfy.org API key override for workflows using ComfyUI API Nodes. |
 | `input.options` | object | no | `{}` | Sampler/model overrides. See [Options](#options). |
 
-For `i2i`, send:
+For `i2i`, send either:
 
+- `input.image` with optional `input.image_name`, or
 - `input.images`, where each item has `name` and `image`.
 
-`input.images` accepts 2-5 images. Single-image `i2i` is currently disabled until a replacement workflow is added.
+`input.images` accepts 1-5 images.
+
+Unsupported `input.model` values fall back to the mode default: `flux2-klein-t2i`
+for `t2i`, or `flux2-klein-multi` for `i2i`.
 
 ## Options
 
@@ -170,7 +174,28 @@ With explicit size:
 
 ## Image-To-Image Payloads
 
-Single-image i2i is currently disabled until a replacement workflow is added. Use the multi-reference `images` array with 2-5 images:
+Inline base64 image:
+
+```json
+{
+  "input": {
+    "mode": "i2i",
+    "model": "flux2-klein-multi",
+    "prompt": "preserve composition, convert to a polished cinematic portrait, realistic lighting, detailed fabric texture",
+    "image_name": "source.png",
+    "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+    "count": 1,
+    "options": {
+      "steps": 20,
+      "cfg": 4,
+      "seed": 987654321,
+      "sampler_name": "euler"
+    }
+  }
+}
+```
+
+Reference images array:
 
 ```json
 {
@@ -195,7 +220,6 @@ Single-image i2i is currently disabled until a replacement workflow is added. Us
       "seed": 987654321,
       "sampler_name": "euler"
     }
-  }
   }
 }
 ```
@@ -377,9 +401,7 @@ Common error messages:
 | `'count' must be >= 1` | `input.count` is less than `1`. |
 | `Missing 'image' (or 'images') parameter for i2i mode` | `i2i` request is missing an input image. |
 | `'images' must be a list of objects with 'name' and 'image' keys` | `images` array has the wrong shape. |
-| `Single-image i2i workflow is not configured; send 2-5 images for multi-reference i2i` | Single-image i2i is disabled until a replacement workflow is added. |
 | `i2i supports at most 5 input images` | `input.images` contains more than 5 images. |
-| `Unsupported model '<name>'` | Requested model preset is not configured. |
 | `No runtime asset manifest found for model '<name>'` | Model preset exists nowhere in the runtime asset manifest. |
 | `Failed downloading ...` | Runtime model download failed. |
 | `ComfyUI server (...) not reachable after multiple retries.` | ComfyUI did not become reachable in the worker. |

@@ -114,7 +114,7 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertEqual(workflow["26"]["inputs"]["guidance"], 3.5)
         self.assertEqual(workflow["16"]["inputs"]["sampler_name"], "ddim")
 
-    def test_flux2_dev_model_request_is_not_supported(self):
+    def test_t2i_unsupported_model_falls_back_to_klein_t2i(self):
         input_data = {
             "mode": "t2i",
             "model": "flux2-dev",
@@ -123,13 +123,36 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
         validated_data, error = handler.validate_input(input_data)
 
-        self.assertIsNone(validated_data)
+        self.assertIsNone(error)
+        workflow = validated_data["workflow"]
+        self.assertEqual(validated_data["selected_model"], "flux2-klein-t2i")
         self.assertEqual(
-            error,
-            "Unsupported model 'flux2-dev'. Available: flux2-klein-t2i, flux2-klein-multi",
+            workflow["12"]["inputs"]["unet_name"],
+            "flux-2-klein-9b-fp8.safetensors",
         )
 
-    def test_single_image_i2i_is_disabled_until_replacement_workflow(self):
+    def test_i2i_unsupported_model_falls_back_to_klein_multi(self):
+        input_data = {
+            "mode": "i2i",
+            "model": "flux2-dev",
+            "prompt": "make the monkey ride the bicycle",
+            "images": [
+                {"name": "monkey.png", "image": "ZmFrZQ=="},
+                {"name": "bicycle.png", "image": "ZmFrZQ=="},
+            ],
+        }
+
+        validated_data, error = handler.validate_input(input_data)
+
+        self.assertIsNone(error)
+        workflow = validated_data["workflow"]
+        self.assertEqual(validated_data["selected_model"], "flux2-klein-multi")
+        self.assertEqual(
+            workflow["12"]["inputs"]["unet_name"],
+            "flux-2-klein-base-4b-fp8.safetensors",
+        )
+
+    def test_single_image_i2i_uses_klein_reference_workflow(self):
         input_data = {
             "mode": "i2i",
             "prompt": "preserve identity with cinematic color",
@@ -140,13 +163,25 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
         validated_data, error = handler.validate_input(input_data)
 
-        self.assertIsNone(validated_data)
+        self.assertIsNone(error)
+        workflow = validated_data["workflow"]
         self.assertEqual(
-            error,
-            "Single-image i2i workflow is not configured; send 2-5 images for multi-reference i2i",
+            validated_data["images"],
+            [{"name": "portrait.png", "image": input_data["image"]}],
         )
+        self.assertEqual(validated_data["selected_model"], "flux2-klein-multi")
+        self.assertEqual(workflow["6"]["inputs"]["text"], input_data["prompt"])
+        self.assertEqual(workflow["46"]["inputs"]["image"], "portrait.png")
+        self.assertNotIn("56", workflow)
+        self.assertNotIn("66", workflow)
+        self.assertNotIn("76", workflow)
+        self.assertNotIn("86", workflow)
+        self.assertEqual(workflow["22"]["inputs"]["conditioning"], ["43", 0])
+        self.assertEqual(workflow["47"]["inputs"]["width"], ["72", 0])
+        self.assertEqual(workflow["47"]["inputs"]["height"], ["72", 1])
+        self.assertEqual(workflow["47"]["inputs"]["batch_size"], 3)
 
-    def test_single_image_images_array_is_disabled_until_replacement_workflow(self):
+    def test_single_image_images_array_uses_klein_reference_workflow(self):
         input_data = {
             "mode": "i2i",
             "prompt": "enhance details",
@@ -155,11 +190,12 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
         validated_data, error = handler.validate_input(input_data)
 
-        self.assertEqual(
-            error,
-            "Single-image i2i workflow is not configured; send 2-5 images for multi-reference i2i",
-        )
-        self.assertIsNone(validated_data)
+        self.assertIsNone(error)
+        workflow = validated_data["workflow"]
+        self.assertEqual(validated_data["images"], input_data["images"])
+        self.assertEqual(workflow["46"]["inputs"]["image"], "input.png")
+        self.assertEqual(workflow["22"]["inputs"]["conditioning"], ["43", 0])
+        self.assertNotIn("56", workflow)
 
     def test_valid_i2i_input_with_multiple_images_uses_multi_reference_workflow(self):
         input_data = {
