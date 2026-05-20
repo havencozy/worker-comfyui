@@ -83,7 +83,7 @@ The following tables describe the fields within the `input` object:
 | `input.count`             | Integer | No       | Batch size. Defaults to `1`.                                                                                                  |
 | `input.image`             | String  | i2i only | Base64 input image for `i2i`. A data URI prefix is optional.                                                                  |
 | `input.image_name`        | String  | No       | Filename used when uploading `input.image` to ComfyUI. Defaults to `input_image.png`.                                         |
-| `input.images`            | Array   | No       | Legacy-compatible image upload array for `i2i`. If supplied, the first image is wired into the built-in Load Image node.      |
+| `input.images`            | Array   | No       | Image upload array for `i2i`. One image uses the standard i2i workflow; 2-5 images use the multi-reference workflow.          |
 | `input.options`           | Object  | No       | Optional sampler fields: `steps`, `seed`, `cfg`, `denoise`, and `sampler_name`.                                                |
 | `input.comfy_org_api_key` | String  | No       | Optional per-request Comfy.org API key for API Nodes. Overrides the `COMFY_ORG_API_KEY` environment variable if both are set. |
 
@@ -169,7 +169,7 @@ curl -X POST \
   https://api.runpod.ai/v2/<endpoint_id>/runsync
 ```
 
-For image-to-image, send `mode: "i2i"` and include either `image` plus optional `image_name`, or the legacy `images` array:
+For image-to-image, send `mode: "i2i"` and include either `image` plus optional `image_name`, or the `images` array. One input image uses the standard i2i workflow; 2-5 images use the Flux2 Klein multi-reference workflow:
 
 ```json
 {
@@ -178,6 +178,27 @@ For image-to-image, send `mode: "i2i"` and include either `image` plus optional 
     "prompt": "preserve identity, cinematic color grading",
     "image": "data:image/png;base64,iVBOR...",
     "image_name": "input_image.png"
+  }
+}
+```
+
+Multiple image references:
+
+```json
+{
+  "input": {
+    "mode": "i2i",
+    "prompt": "make a photo of the monkey riding the bicycle on a city street",
+    "images": [
+      {
+        "name": "monkey.png",
+        "image": "data:image/png;base64,iVBOR..."
+      },
+      {
+        "name": "bicycle.png",
+        "image": "data:image/png;base64,iVBOR..."
+      }
+    ]
   }
 }
 ```

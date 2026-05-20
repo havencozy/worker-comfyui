@@ -71,6 +71,10 @@ FLUX2_T2I_WORKFLOW_PATH = os.environ.get(
 FLUX2_I2I_WORKFLOW_PATH = os.environ.get(
     "FLUX2_I2I_WORKFLOW_PATH", os.path.join(WORKFLOW_DIR, "flux2_i2i.json")
 )
+FLUX2_KLEIN_MULTI_I2I_WORKFLOW_PATH = os.environ.get(
+    "FLUX2_KLEIN_MULTI_I2I_WORKFLOW_PATH",
+    os.path.join(WORKFLOW_DIR, "flux2_klein_multi_i2i.json"),
+)
 
 ASPECT_RATIO_PRESETS = {
     "1:1": (1024, 1024),
@@ -95,6 +99,11 @@ DEFAULT_FLUX_MODEL_PRESETS = {
         "clip_name": "mistral_3_small_flux2_bf16.safetensors",
         "vae_name": "flux2-vae.safetensors",
     },
+    "flux2-klein-multi": {
+        "unet_name": "flux2_dev_fp8mixed.safetensors",
+        "clip_name": "qwen_3_4b.safetensors",
+        "vae_name": "flux2-vae.safetensors",
+    },
 }
 
 # Runtime download manifest (used by API call preflight: check model -> download if missing)
@@ -113,7 +122,21 @@ DEFAULT_FLUX_MODEL_ASSETS = {
             "path": "models/vae/flux2-vae.safetensors",
             "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors",
         }
-    ]
+    ],
+    "flux2-klein-multi": [
+        {
+            "path": "models/text_encoders/qwen_3_4b.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors",
+        },
+        {
+            "path": "models/unet/flux2_dev_fp8mixed.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/diffusion_models/flux2_dev_fp8mixed.safetensors",
+        },
+        {
+            "path": "models/vae/flux2-vae.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors",
+        },
+    ],
 }
 
 # ---------------------------------------------------------------------------
@@ -317,6 +340,51 @@ def _set_i2i_image_fields(workflow, image_name):
             inputs["image"] = image_name
 
 
+MULTI_I2I_IMAGE_NODE_IDS = ["46", "56", "66", "76", "86"]
+MULTI_I2I_REFERENCE_NODE_IDS = ["43", "53", "63", "73", "83"]
+MULTI_I2I_PRUNABLE_NODE_IDS = [
+    ["56", "54", "53"],
+    ["66", "64", "63"],
+    ["76", "74", "73"],
+    ["86", "84", "83"],
+]
+
+
+def _set_multi_i2i_image_fields(workflow, images):
+    for index, image in enumerate(images):
+        workflow[MULTI_I2I_IMAGE_NODE_IDS[index]]["inputs"]["image"] = image["name"]
+
+    for nodes in MULTI_I2I_PRUNABLE_NODE_IDS[len(images) - 1:]:
+        for node_id in nodes:
+            workflow.pop(node_id, None)
+
+    final_reference_node = MULTI_I2I_REFERENCE_NODE_IDS[len(images) - 1]
+    workflow["22"]["inputs"]["conditioning"] = [final_reference_node, 0]
+
+
+def _get_i2i_images(job_input):
+    image_value = job_input.get("image")
+    image_name = job_input.get("image_name", "input_image.png")
+
+    if image_value:
+        return [{"name": image_name, "image": image_value}], None
+
+    if job_input.get("images"):
+        images = job_input.get("images")
+        if not isinstance(images, list) or not images or not all(
+            "name" in img and "image" in img for img in images
+        ):
+            return (
+                None,
+                "'images' must be a list of objects with 'name' and 'image' keys",
+            )
+        if len(images) > 5:
+            return None, "i2i supports at most 5 input images"
+        return images, None
+
+    return None, "Missing 'image' (or 'images') parameter for i2i mode"
+
+
 def _load_model_presets():
     raw = os.environ.get("FLUX_MODEL_PRESETS_JSON")
     if not raw:
@@ -413,9 +481,17 @@ def _apply_model_preset(workflow, model_name):
 
 
 def _build_custom_mode_input(job_input, mode):
+    images = None
     workflow_path = (
         FLUX2_T2I_WORKFLOW_PATH if mode == "t2i" else FLUX2_I2I_WORKFLOW_PATH
     )
+
+    if mode == "i2i":
+        images, image_error = _get_i2i_images(job_input)
+        if image_error:
+            return None, image_error
+        if len(images) > 1:
+            workflow_path = FLUX2_KLEIN_MULTI_I2I_WORKFLOW_PATH
 
     try:
         workflow = _load_workflow_template(workflow_path)
@@ -455,6 +531,9 @@ def _build_custom_mode_input(job_input, mode):
     )
 
     model_name = options.get("model") or job_input.get("model")
+    if mode == "i2i" and images and len(images) > 1:
+        if model_name in [None, "flux2-dev"]:
+            model_name = "flux2-klein-multi"
     if model_name:
         ok, model_error = _apply_model_preset(workflow, model_name)
         if not ok:
@@ -462,28 +541,11 @@ def _build_custom_mode_input(job_input, mode):
 
     _set_numeric_fields(workflow, width, height, count, options)
 
-    images = None
     if mode == "i2i":
-        image_value = job_input.get("image")
-        image_name = job_input.get("image_name", "input_image.png")
-
-        # Allow either `image` or existing `images` format
-        if image_value:
-            images = [{"name": image_name, "image": image_value}]
-        elif job_input.get("images"):
-            images = job_input.get("images")
-            if not isinstance(images, list) or not all(
-                "name" in img and "image" in img for img in images
-            ):
-                return (
-                    None,
-                    "'images' must be a list of objects with 'name' and 'image' keys",
-                )
-            image_name = images[0]["name"]
+        if len(images) == 1:
+            _set_i2i_image_fields(workflow, images[0]["name"])
         else:
-            return None, "Missing 'image' (or 'images') parameter for i2i mode"
-
-        _set_i2i_image_fields(workflow, image_name)
+            _set_multi_i2i_image_fields(workflow, images)
 
     return {
         "workflow": workflow,

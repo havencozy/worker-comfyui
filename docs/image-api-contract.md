@@ -77,7 +77,7 @@ All generation parameters must be wrapped under `input`.
 | `input.count` | integer | no | `1` | Batch size. Must be `>= 1`. |
 | `input.image` | string | `i2i` option | none | Base64 input image. Data URI prefix is supported. |
 | `input.image_name` | string | no | `input_image.png` | Filename used when uploading `input.image` to ComfyUI. |
-| `input.images` | object[] | `i2i` option | none | Legacy-compatible image upload format. First image is wired into the workflow's `LoadImage` node. |
+| `input.images` | object[] | `i2i` option | none | Image upload format. One image uses the standard i2i workflow; 2-5 images use the multi-reference workflow. |
 | `input.comfy_org_api_key` | string | no | env default | Per-request Comfy.org API key override for workflows using ComfyUI API Nodes. |
 | `input.options` | object | no | `{}` | Sampler/model overrides. See [Options](#options). |
 
@@ -85,6 +85,8 @@ For `i2i`, send either:
 
 - `input.image` with optional `input.image_name`, or
 - `input.images`, where each item has `name` and `image`.
+
+`input.images` accepts at most 5 images.
 
 ## Options
 
@@ -396,6 +398,7 @@ Common error messages:
 | `'count' must be >= 1` | `input.count` is less than `1`. |
 | `Missing 'image' (or 'images') parameter for i2i mode` | `i2i` request is missing an input image. |
 | `'images' must be a list of objects with 'name' and 'image' keys` | Legacy `images` array has the wrong shape. |
+| `i2i supports at most 5 input images` | `input.images` contains more than 5 images. |
 | `Unsupported model '<name>'` | Requested model preset is not configured. |
 | `No runtime asset manifest found for model '<name>'` | Model preset exists nowhere in the runtime asset manifest. |
 | `Failed downloading ...` | Runtime model download failed. |
@@ -414,4 +417,3 @@ Common error messages:
 - Store the seed sent in `input.options.seed` if users need reproducibility.
 - Do not send raw ComfyUI workflow JSON; only the fields listed in this
   contract are part of the public API.
-

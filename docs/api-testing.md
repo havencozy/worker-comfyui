@@ -53,7 +53,7 @@ All requests must wrap the custom payload under `input`.
 | `input.count` | integer | no | Batch size. Defaults to `1`; must be `>= 1`. |
 | `input.image` | string | i2i only | Base64 image. Data URI prefix is supported. |
 | `input.image_name` | string | no | Filename used when uploading `input.image`. Defaults to `input_image.png`. |
-| `input.images` | array | no | Legacy-compatible i2i upload format. First image is wired into the Load Image node. |
+| `input.images` | array | no | Image upload array for i2i. One image uses the standard workflow; 2-5 images use the multi-reference workflow. |
 | `input.options` | object | no | Optional sampler overrides: `steps`, `seed`, `cfg`, `denoise`, `sampler_name`, `model`. |
 | `input.comfy_org_api_key` | string | no | Per-request Comfy.org API key. Overrides `COMFY_ORG_API_KEY`. |
 
@@ -61,6 +61,7 @@ Notes:
 
 - `t2i` defaults to `1024x1024` when no size is provided.
 - `i2i` preserves the source image size by default. Send `aspect_ratio` or `width`/`height` only when you want to resize.
+- `i2i` accepts at most 5 images. Send 2-5 images to use the multi-reference workflow.
 - `input.model` and `input.options.model` are equivalent; `options.model` wins if both are present.
 - Do not send `input.workflow`; this API builds the workflow internally from `workflows/flux2_t2i.json` or `workflows/flux2_i2i.json`.
 
@@ -106,6 +107,7 @@ Available sample files:
 | `sample_payloads/i2i-minimal.json` | Smallest valid image-to-image request with inline base64 image. |
 | `sample_payloads/i2i-advanced.json` | Image-to-image with model preset and sampler options. |
 | `sample_payloads/i2i-legacy-images-array.json` | Image-to-image using the legacy `images` array shape. |
+| `sample_payloads/i2i-multi-reference.json` | Image-to-image using 2 reference images. |
 
 ## Expected Response
 
@@ -142,6 +144,10 @@ Send `input.prompt`.
 `Missing 'image' (or 'images') parameter for i2i mode`
 
 For `mode: "i2i"`, send either `input.image` or `input.images`.
+
+`i2i supports at most 5 input images`
+
+Send no more than 5 objects in `input.images`.
 
 `Unsupported model '<name>'`
 

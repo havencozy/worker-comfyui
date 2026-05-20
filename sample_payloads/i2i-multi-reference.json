@@ -1,0 +1,23 @@
+{
+  "input": {
+    "mode": "i2i",
+    "prompt": "make a photo of the monkey riding the bicycle on a city street",
+    "images": [
+      {
+        "name": "monkey.png",
+        "image": "data:image/png;base64,REPLACE_WITH_BASE64"
+      },
+      {
+        "name": "bicycle.png",
+        "image": "data:image/png;base64,REPLACE_WITH_BASE64"
+      }
+    ],
+    "count": 1,
+    "options": {
+      "steps": 20,
+      "cfg": 4,
+      "seed": 987654321,
+      "sampler_name": "euler"
+    }
+  }
+}

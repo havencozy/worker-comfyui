@@ -146,6 +146,64 @@ class TestRunpodWorkerComfy(unittest.TestCase):
             "input.png",
         )
 
+    def test_valid_i2i_input_with_multiple_images_uses_multi_reference_workflow(self):
+        input_data = {
+            "mode": "i2i",
+            "prompt": "make the monkey ride the bicycle",
+            "images": [
+                {"name": "monkey.png", "image": "ZmFrZQ=="},
+                {"name": "bicycle.png", "image": "ZmFrZQ=="},
+                {"name": "street.png", "image": "ZmFrZQ=="},
+            ],
+        }
+
+        validated_data, error = handler.validate_input(input_data)
+
+        self.assertIsNone(error)
+        workflow = validated_data["workflow"]
+        self.assertEqual(validated_data["images"], input_data["images"])
+        self.assertEqual(workflow["46"]["inputs"]["image"], "monkey.png")
+        self.assertEqual(workflow["56"]["inputs"]["image"], "bicycle.png")
+        self.assertEqual(workflow["66"]["inputs"]["image"], "street.png")
+        self.assertEqual(workflow["38"]["inputs"]["clip_name"], "qwen_3_4b.safetensors")
+        self.assertEqual(workflow["12"]["inputs"]["unet_name"], "flux2_dev_fp8mixed.safetensors")
+        self.assertNotIn("76", workflow)
+        self.assertEqual(workflow["22"]["inputs"]["conditioning"], ["63", 0])
+
+    def test_i2i_rejects_more_than_five_images(self):
+        input_data = {
+            "mode": "i2i",
+            "prompt": "too many references",
+            "images": [
+                {"name": f"image_{index}.png", "image": "ZmFrZQ=="}
+                for index in range(6)
+            ],
+        }
+
+        validated_data, error = handler.validate_input(input_data)
+
+        self.assertIsNone(validated_data)
+        self.assertEqual(error, "i2i supports at most 5 input images")
+
+    def test_multi_i2i_keeps_klein_preset_when_client_sends_flux2_dev_model(self):
+        input_data = {
+            "mode": "i2i",
+            "model": "flux2-dev",
+            "prompt": "make the monkey ride the bicycle",
+            "images": [
+                {"name": "monkey.png", "image": "ZmFrZQ=="},
+                {"name": "bicycle.png", "image": "ZmFrZQ=="},
+            ],
+        }
+
+        validated_data, error = handler.validate_input(input_data)
+
+        self.assertIsNone(error)
+        workflow = validated_data["workflow"]
+        self.assertEqual(validated_data["selected_model"], "flux2-klein-multi")
+        self.assertEqual(workflow["38"]["inputs"]["clip_name"], "qwen_3_4b.safetensors")
+        self.assertEqual(workflow["12"]["inputs"]["unet_name"], "flux2_dev_fp8mixed.safetensors")
+
     def test_valid_json_string_input(self):
         input_data = '{"mode": "t2i", "prompt": "a clean product render"}'
 
