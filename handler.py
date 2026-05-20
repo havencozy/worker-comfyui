@@ -558,10 +558,10 @@ def _build_custom_mode_input(job_input, mode):
     )
 
     model_name = options.get("model") or job_input.get("model")
-    if mode == "t2i" and model_name in [None, "flux2-dev"]:
+    if mode == "t2i" and model_name is None:
         model_name = "flux2-klein-t2i"
     if mode == "i2i" and images and len(images) > 1:
-        if model_name in [None, "flux2-dev"]:
+        if model_name is None:
             model_name = "flux2-klein-multi"
     if model_name:
         ok, model_error = _apply_model_preset(workflow, model_name)

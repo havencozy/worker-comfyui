@@ -114,7 +114,7 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertEqual(workflow["26"]["inputs"]["guidance"], 3.5)
         self.assertEqual(workflow["16"]["inputs"]["sampler_name"], "ddim")
 
-    def test_t2i_flux2_dev_model_request_uses_klein_t2i_preset(self):
+    def test_flux2_dev_model_request_is_not_supported(self):
         input_data = {
             "mode": "t2i",
             "model": "flux2-dev",
@@ -123,16 +123,10 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
         validated_data, error = handler.validate_input(input_data)
 
-        self.assertIsNone(error)
-        workflow = validated_data["workflow"]
-        self.assertEqual(validated_data["selected_model"], "flux2-klein-t2i")
+        self.assertIsNone(validated_data)
         self.assertEqual(
-            workflow["12"]["inputs"]["unet_name"],
-            "flux-2-klein-9b-fp8.safetensors",
-        )
-        self.assertEqual(
-            workflow["38"]["inputs"]["clip_name"],
-            "qwen_3_8b_fp8mixed.safetensors",
+            error,
+            "Unsupported model 'flux2-dev'. Available: flux2-klein-t2i, flux2-klein-multi",
         )
 
     def test_single_image_i2i_is_disabled_until_replacement_workflow(self):
@@ -211,31 +205,6 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
         self.assertIsNone(validated_data)
         self.assertEqual(error, "i2i supports at most 5 input images")
-
-    def test_multi_i2i_keeps_klein_preset_when_client_sends_flux2_dev_model(self):
-        input_data = {
-            "mode": "i2i",
-            "model": "flux2-dev",
-            "prompt": "make the monkey ride the bicycle",
-            "images": [
-                {"name": "monkey.png", "image": "ZmFrZQ=="},
-                {"name": "bicycle.png", "image": "ZmFrZQ=="},
-            ],
-        }
-
-        validated_data, error = handler.validate_input(input_data)
-
-        self.assertIsNone(error)
-        workflow = validated_data["workflow"]
-        self.assertEqual(validated_data["selected_model"], "flux2-klein-multi")
-        self.assertEqual(
-            workflow["38"]["inputs"]["clip_name"],
-            "qwen_3_4b.safetensors",
-        )
-        self.assertEqual(
-            workflow["12"]["inputs"]["unet_name"],
-            "flux-2-klein-base-4b-fp8.safetensors",
-        )
 
     def test_valid_json_string_input(self):
         input_data = '{"mode": "t2i", "prompt": "a clean product render"}'
