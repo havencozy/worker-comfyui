@@ -115,7 +115,7 @@
   },
   "14": {
     "inputs": {
-      "video_latent": ["11", 0],
+      "video_latent": ["17", 0],
       "audio_latent": ["13", 0]
     },
     "class_type": "LTXVConcatAVLatent",
@@ -143,7 +143,7 @@
       "bypass": false,
       "vae": ["16", 0],
       "image": ["15", 0],
-      "latent": ["14", 0]
+      "latent": ["11", 0]
     },
     "class_type": "LTXVImgToVideoConditionOnly",
     "_meta": {"title": "Image To Video Condition"}
@@ -185,7 +185,7 @@
       "guider": ["19", 0],
       "sampler": ["20", 0],
       "sigmas": ["21", 0],
-      "latent_image": ["17", 0]
+      "latent_image": ["14", 0]
     },
     "class_type": "SamplerCustomAdvanced",
     "_meta": {"title": "Sampler Stage 1"}
