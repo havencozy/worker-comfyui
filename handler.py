@@ -623,6 +623,7 @@ def _set_video_dimensions_and_length(workflow, width, height, num_frames):
             "WanImageToVideo",
             "Wan22ImageToVideoLatent",
             "WanFirstLastFrameToVideo",
+            "EmptyLTXVLatentVideo",
         }:
             if "width" in inputs:
                 inputs["width"] = int(width)
@@ -635,6 +636,9 @@ def _set_video_dimensions_and_length(workflow, width, height, num_frames):
         if class_type in {"HyVideo15T2VSampler", "HyVideo15I2VSampler"}:
             if "video_length" in inputs:
                 inputs["video_length"] = int(num_frames)
+        if class_type == "LTXVEmptyLatentAudio":
+            if "frames_number" in inputs:
+                inputs["frames_number"] = int(num_frames)
 
 
 def _set_video_sampler_fields(workflow, seed, options):
@@ -672,6 +676,10 @@ def _set_video_sampler_fields(workflow, seed, options):
                 inputs["num_inference_steps"] = total_steps
             if "guidance_scale" in inputs:
                 inputs["guidance_scale"] = float(options["guidance_scale"])
+        if class_type == "RandomNoise" and "noise_seed" in inputs:
+            inputs["noise_seed"] = int(seed)
+        if class_type == "CFGGuider" and "cfg" in inputs:
+            inputs["cfg"] = float(options["guidance_scale"])
 
 
 def _video_filename_prefix(mode, job_id=None, model_slug="wan22"):
@@ -693,6 +701,8 @@ def _set_video_save_fields(workflow, mode, fps, job_id=None, model_slug="wan22")
                 inputs["fps"] = int(fps)
         if class_type == "CreateVideo" and "fps" in inputs:
             inputs["fps"] = int(fps)
+        if class_type == "VHS_VideoCombine" and "frame_rate" in inputs:
+            inputs["frame_rate"] = int(fps)
 
 
 def _set_video_load_image_fields(
@@ -730,6 +740,10 @@ def _set_model_specific_fields(workflow, video_config, normalized, job_input):
                 or job_input.get("huggingface_access_token")
                 or os.environ.get("HUGGINGFACE_ACCESS_TOKEN", "")
             )
+        if node.get("class_type") == "LTXVConditioning" and "frame_rate" in inputs:
+            inputs["frame_rate"] = int(normalized["options"]["fps"])
+        if node.get("class_type") == "LTXVEmptyLatentAudio" and "frame_rate" in inputs:
+            inputs["frame_rate"] = int(normalized["options"]["fps"])
 
 
 def _build_video_mode_input(job_input, video_config):

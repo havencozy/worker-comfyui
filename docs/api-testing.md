@@ -44,6 +44,36 @@ All requests must wrap the custom payload under `input`.
 | `ltx-i2v` | none | `prompt`, `start_frame` | LTX-2.3 image-to-video. `start_frame_name` controls the uploaded frame filename. |
 | `ltx-flf2v` | none | `prompt` plus two frame refs | LTX-2.3 first-last-frame video. Send `start_frame` and `end_frame`, or at least two `image_urls`. |
 
+### Model Notes
+
+#### Wan2.2
+
+- Modes: `t2v`, `i2v`, `r2v`, plus aliases `wan22-t2v`, `wan22-i2v`, `wan22-flf2v`.
+- `resolution`: `480p`, `720p`, `1080p`
+- `duration`: `auto` or integer seconds `4..15`
+- `aspect_ratio`: `auto`, `21:9`, `16:9`, `4:3`, `1:1`, `3:4`, `9:16`
+- Wired fields: `resolution`, `aspect_ratio`, `duration`, `options.length`, `seed`, `options.fps`, `options.steps`, `options.guidance_scale`
+- Audio: silent workflows; `generate_audio=true` adds `AUDIO_NOT_SUPPORTED_BY_WORKFLOW`
+
+#### HunyuanVideo 1.5
+
+- Modes: `hunyuan-t2v`, `hunyuan-i2v`
+- Shared API contract: same payload field ranges as Wan2.2 unless a deployment documents stricter GPU limits
+- `hunyuan-i2v` requires `start_frame`
+- Audio: `generate_audio` is compatibility-only in the current deployment
+
+#### LTX-2.3
+
+- Modes: `ltx-t2v`, `ltx-i2v`, `ltx-flf2v`
+- `resolution`: `480p`, `720p`, `1080p`
+- `duration`: `auto` or integer seconds `4..15`
+- `aspect_ratio`: `auto`, `21:9`, `16:9`, `4:3`, `1:1`, `3:4`, `9:16`
+- `ltx-i2v` requires `start_frame`
+- `ltx-flf2v` requires `start_frame` + `end_frame`, or the first two `image_urls`
+- Wired fields: `prompt`, `negative_prompt`, `resolution`, `aspect_ratio`, `duration`, `options.length`, `seed`, `options.fps`, `options.guidance_scale`
+- Not wired yet: `options.steps`, `options.motion_strength`, `options.strength`
+- Audio: `generate_audio` is compatibility-only in the current deployment
+
 For third-party production deployments, see the
 [Third-Party RunPod Integration Guide](third-party-runpod-integration.md).
 

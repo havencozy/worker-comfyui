@@ -84,6 +84,31 @@ Supported modes:
 
 Wan2.2 T2V/I2V/FLF2V outputs silent videos. `generate_audio=true` is accepted but returns `AUDIO_NOT_SUPPORTED_BY_WORKFLOW` in `meta.warnings`.
 
+### Model Notes
+
+#### Wan2.2
+
+- Modes: `t2v`, `i2v`, `r2v`, plus aliases `wan22-t2v`, `wan22-i2v`, `wan22-flf2v`.
+- Input contract: `resolution` = `480p` / `720p` / `1080p`; `duration` = `auto` or `4..15`; `aspect_ratio` = `auto`, `21:9`, `16:9`, `4:3`, `1:1`, `3:4`, `9:16`.
+- Parameter wiring: `resolution`, `aspect_ratio`, `duration`, `options.length`, `seed`, `options.fps`, `options.steps`, `options.guidance_scale` are applied to the workflow.
+- Audio: current Wan2.2 workflows are silent. `generate_audio=true` only adds `AUDIO_NOT_SUPPORTED_BY_WORKFLOW` to `meta.warnings`.
+
+#### HunyuanVideo 1.5
+
+- Modes: `hunyuan-t2v`, `hunyuan-i2v`.
+- Input contract: same shared API ranges as Wan2.2 unless the deployment documents a stricter GPU-specific limit.
+- Frame inputs: `hunyuan-i2v` requires `start_frame`.
+- Audio: current deployment treats `generate_audio` as compatibility-only.
+
+#### LTX-2.3
+
+- Modes: `ltx-t2v`, `ltx-i2v`, `ltx-flf2v`.
+- Input contract: `resolution` = `480p` / `720p` / `1080p`; `duration` = `auto` or `4..15`; `aspect_ratio` = `auto`, `21:9`, `16:9`, `4:3`, `1:1`, `3:4`, `9:16`.
+- Frame inputs: `ltx-i2v` requires `start_frame`; `ltx-flf2v` requires `start_frame` + `end_frame`, or the first two `image_urls`.
+- Parameter wiring: `prompt`, `negative_prompt`, `resolution`, `aspect_ratio`, `duration`, `options.length`, `seed`, `options.fps`, and `options.guidance_scale` are applied to the workflow.
+- Current gaps: `options.steps`, `options.motion_strength`, and `options.strength` are accepted by the API but are not wired into the current LTX workflows yet.
+- Audio: current deployment treats `generate_audio` as compatibility-only.
+
 The following fields are supported within the `input` object:
 
 | Field Path | Type | Required | Description |

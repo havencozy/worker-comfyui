@@ -45,6 +45,32 @@ client code.
 | `ltx-i2v` | LTX-2.3 image-to-video | `prompt`, `start_frame` |
 | `ltx-flf2v` | LTX-2.3 first-last-frame video | `prompt` and two frame references |
 
+## Model Notes
+
+### Wan2.2
+
+- Modes: `t2v`, `i2v`, `r2v`, plus aliases `wan22-t2v`, `wan22-i2v`, `wan22-flf2v`
+- Shared payload limits: `resolution` = `480p` / `720p` / `1080p`; `duration` = `auto` or `4..15`; `aspect_ratio` = `auto`, `21:9`, `16:9`, `4:3`, `1:1`, `3:4`, `9:16`
+- Workflow-controlled fields: `resolution`, `aspect_ratio`, `duration`, `options.length`, `seed`, `options.fps`, `options.steps`, `options.guidance_scale`
+- Audio: current workflows are silent; `generate_audio=true` only adds `AUDIO_NOT_SUPPORTED_BY_WORKFLOW`
+
+### HunyuanVideo 1.5
+
+- Modes: `hunyuan-t2v`, `hunyuan-i2v`
+- Uses the same HTTP payload contract as Wan2.2 unless a deployment documents stricter GPU-specific limits
+- `hunyuan-i2v` requires `start_frame`
+- Audio: `generate_audio` is compatibility-only in the current deployment
+
+### LTX-2.3
+
+- Modes: `ltx-t2v`, `ltx-i2v`, `ltx-flf2v`
+- Shared payload limits: `resolution` = `480p` / `720p` / `1080p`; `duration` = `auto` or `4..15`; `aspect_ratio` = `auto`, `21:9`, `16:9`, `4:3`, `1:1`, `3:4`, `9:16`
+- `ltx-i2v` requires `start_frame`
+- `ltx-flf2v` requires `start_frame` + `end_frame`, or the first two `image_urls`
+- Workflow-controlled fields: `prompt`, `negative_prompt`, `resolution`, `aspect_ratio`, `duration`, `options.length`, `seed`, `options.fps`, `options.guidance_scale`
+- Accepted but not wired yet: `options.steps`, `options.motion_strength`, `options.strength`
+- Audio: `generate_audio` is compatibility-only in the current deployment
+
 ## Request Body
 
 All requests must wrap generation parameters under `input`.
