@@ -5,7 +5,7 @@ ARG BASE_IMAGE=nvidia/cuda:13.0.0-cudnn-runtime-ubuntu24.04
 FROM ${BASE_IMAGE} AS base
 
 # Build arguments for this stage with sensible defaults for standalone builds
-ARG COMFYUI_VERSION=v0.21.1
+ARG COMFYUI_VERSION=v0.22.0
 ARG CUDA_VERSION_FOR_COMFY=
 ARG ENABLE_PYTORCH_UPGRADE=true
 ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu130
@@ -84,6 +84,35 @@ RUN mkdir -p /comfyui/custom_nodes \
     && /comfyui/.venv/bin/python -m pip install -r /comfyui/custom_nodes/ComfyUI-GGUF/requirements.txt \
     && /comfyui/.venv/bin/python -m pip install -r /comfyui/custom_nodes/ComfyUI-KJNodes/requirements.txt \
     && /comfyui/.venv/bin/python -m pip install -r /comfyui/custom_nodes/ComfyUI-LTXVideo/requirements.txt
+
+# Fail the image build if the LTXVideo custom node import chain does not
+# register the node required by the LTX-2.3 I2V workflow.
+RUN /comfyui/.venv/bin/python - <<'PY'
+import importlib.util
+import sys
+
+import comfy.ldm.lightricks.vae.audio_vae
+import comfy.nested_tensor
+import comfy_extras.nodes_lt
+
+module_name = "comfyui_ltxvideo_smoke"
+module_path = "/comfyui/custom_nodes/ComfyUI-LTXVideo/__init__.py"
+spec = importlib.util.spec_from_file_location(
+    module_name,
+    module_path,
+    submodule_search_locations=["/comfyui/custom_nodes/ComfyUI-LTXVideo"],
+)
+module = importlib.util.module_from_spec(spec)
+sys.modules[module_name] = module
+spec.loader.exec_module(module)
+
+required_nodes = {"LTXVImgToVideoConditionOnly"}
+missing = sorted(required_nodes - set(module.NODE_CLASS_MAPPINGS))
+if missing:
+    raise SystemExit(f"Missing LTXVideo node registrations: {missing}")
+
+print("LTXVideo custom node imports OK")
+PY
 
 # Support for the network volume
 ADD src/extra_model_paths.yaml ./
