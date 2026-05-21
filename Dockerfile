@@ -85,11 +85,32 @@ RUN mkdir -p /comfyui/custom_nodes \
     && /comfyui/.venv/bin/python -m pip install -r /comfyui/custom_nodes/ComfyUI-KJNodes/requirements.txt \
     && /comfyui/.venv/bin/python -m pip install -r /comfyui/custom_nodes/ComfyUI-LTXVideo/requirements.txt
 
+# ComfyUI-LTXVideo currently imports pad from kornia's pyramid module, but
+# modern kornia versions do not export it there. Use the already imported
+# torch.nn.functional implementation instead.
+RUN /comfyui/.venv/bin/python - <<'PY'
+from pathlib import Path
+
+path = Path("/comfyui/custom_nodes/ComfyUI-LTXVideo/pyramid_blending.py")
+text = path.read_text()
+text = text.replace("    pad,\n", "")
+if "pad = F.pad" not in text:
+    text = text.replace("from torch import Tensor\n", "from torch import Tensor\n\npad = F.pad\n")
+path.write_text(text)
+PY
+
 # Fail the image build if the LTXVideo custom node import chain does not
 # register the node required by the LTX-2.3 I2V workflow.
 RUN /comfyui/.venv/bin/python - <<'PY'
 import importlib.util
 import sys
+
+# ComfyUI initializes device state at import time. Build containers do not have
+# an NVIDIA driver, so force CPU only for this import smoke test.
+sys.argv = ["ltxvideo-smoke", "--cpu"]
+
+import comfy.cli_args
+comfy.cli_args.args.cpu = True
 
 import comfy.ldm.lightricks.vae.audio_vae
 import comfy.nested_tensor
