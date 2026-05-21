@@ -41,6 +41,7 @@ Models must be placed in the following structure on your network volume:
     ├── controlnet/       # ControlNet models (.safetensors, .pt)
     ├── embeddings/       # Textual inversion embeddings (.safetensors, .pt)
     ├── upscale_models/   # Upscaling models (.safetensors, .pt)
+    ├── latent_upscale_models/ # Latent upscalers used by LTX workflows
     ├── unet/             # UNet models
     └── configs/          # Model configs (.yaml, .json)
 ```
@@ -149,7 +150,7 @@ mkdir -p \
   /workspace/models/loras \
   /workspace/models/text_encoders \
   /workspace/models/vae \
-  /workspace/models/upscale_models
+  /workspace/models/latent_upscale_models
 ```
 
 Download the workflow's required files to these exact paths:
@@ -180,7 +181,7 @@ wget --show-progress \
   https://huggingface.co/unsloth/LTX-2.3-GGUF/resolve/main/vae/ltx-2.3-22b-dev_video_vae.safetensors
 
 wget --show-progress \
-  -O /workspace/models/upscale_models/ltx-2.3-spatial-upscaler-x2-1.1.safetensors \
+  -O /workspace/models/latent_upscale_models/ltx-2.3-spatial-upscaler-x2-1.1.safetensors \
   https://huggingface.co/Oveei/LTX-2.3/resolve/main/ltx-2.3-spatial-upscaler-x2-1.1.safetensors
 ```
 
@@ -199,7 +200,7 @@ Expected serverless worker view after attaching the same volume:
     ├── vae/
     │   ├── ltx-2.3-22b-dev_audio_vae.safetensors
     │   └── ltx-2.3-22b-dev_video_vae.safetensors
-    └── upscale_models/
+    └── latent_upscale_models/
         └── ltx-2.3-spatial-upscaler-x2-1.1.safetensors
 ```
 

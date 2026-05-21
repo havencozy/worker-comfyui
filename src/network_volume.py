@@ -17,6 +17,7 @@ MODEL_TYPES = {
     "embeddings": [".safetensors", ".pt", ".bin"],
     "loras": [".safetensors", ".pt"],
     "upscale_models": [".safetensors", ".pt", ".pth"],
+    "latent_upscale_models": [".safetensors", ".pt", ".pth"],
     "vae": [".safetensors", ".pt", ".bin"],
     "unet": [".safetensors", ".pt", ".bin"],
 }
@@ -140,7 +141,8 @@ def print_expected_structure():
     print("        ├── clip/           <- Put your CLIP models here")
     print("        ├── controlnet/     <- Put your ControlNet models here")
     print("        ├── embeddings/     <- Put your embedding files here")
-    print("        └── upscale_models/ <- Put your upscale models here")
+    print("        ├── upscale_models/ <- Put classic upscale models here")
+    print("        └── latent_upscale_models/ <- Put LTX latent upscale models here")
 
 
 def format_size(size_bytes):
