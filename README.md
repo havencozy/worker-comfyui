@@ -80,6 +80,7 @@ Supported modes:
 - `hunyuan-i2v`: image-to-video using HunyuanVideo 1.5 workflow template. Requires `start_frame`.
 - `ltx-t2v`: text-to-video using LTX-2.3 workflow template.
 - `ltx-i2v`: image-to-video using LTX-2.3 workflow template. Requires `start_frame`.
+- `ltx-flf2v`: first-last-frame video using LTX-2.3 workflow template. Requires `start_frame` and `end_frame`, or `image_urls[0]` and `image_urls[1]`.
 
 Wan2.2 T2V/I2V/FLF2V outputs silent videos. `generate_audio=true` is accepted but returns `AUDIO_NOT_SUPPORTED_BY_WORKFLOW` in `meta.warnings`.
 
@@ -87,8 +88,8 @@ The following fields are supported within the `input` object:
 
 | Field Path | Type | Required | Description |
 | ---------- | ---- | -------- | ----------- |
-| `input.mode` | String | Yes | Supported values: `t2v`, `i2v`, `r2v`, `hunyuan-t2v`, `hunyuan-i2v`, `ltx-t2v`, `ltx-i2v`; aliases: `wan22-t2v`, `wan22-i2v`, `wan22-flf2v`. |
-| `input.prompt` | String | Yes | Positive prompt injected into the selected Wan2.2 workflow. |
+| `input.mode` | String | Yes | Supported values: `t2v`, `i2v`, `r2v`, `hunyuan-t2v`, `hunyuan-i2v`, `ltx-t2v`, `ltx-i2v`, `ltx-flf2v`; aliases: `wan22-t2v`, `wan22-i2v`, `wan22-flf2v`. |
+| `input.prompt` | String | Yes | Positive prompt injected into the selected video workflow. |
 | `input.negative_prompt` | String | No | Negative prompt, defaults to an empty string. |
 | `input.resolution` | String | No | `480p`, `720p`, or `1080p`. Defaults to `720p`. |
 | `input.duration` | String or Integer | No | `auto` or integer seconds from `4` to `15`. `auto` means 5 seconds. Ignored when `input.options.length` is set. |
@@ -112,11 +113,14 @@ The following fields are supported within the `input` object:
 
 Parameter mapping summary:
 
+- The same `resolution`, `duration`, `aspect_ratio`, `fps`, `steps`, `guidance_scale`, `motion_strength`, `strength`, and `options.length` contract applies to `wan`, `hunyuan`, and `ltx` modes unless the deployment documents a stricter model-specific limit.
 - `duration` accepts `auto` or any integer second from `4` through `15`. `auto` maps to `5` seconds.
 - If `input.options.length` is set, it overrides `duration`; the worker uses `num_frames = length` and reports `duration_sec = length / fps`.
 - Without `options.length`, `num_frames = duration_sec * fps`.
 - `resolution + aspect_ratio` maps to workflow `width` and `height`; `auto` aspect ratio is treated as `16:9`. For example, `480p + 16:9` becomes `848 x 480`, and `720p + 16:9` becomes `1280 x 720`.
 - `options.steps` is injected into both Wan2.2 samplers. The high-noise sampler runs the first half of the steps, and the low-noise sampler starts at `steps // 2`.
+- `ltx-i2v` requires `start_frame`, just like `wan22-i2v` and `hunyuan-i2v`.
+- `ltx-flf2v` uses the same first-last-frame contract as `r2v`: send `start_frame` + `end_frame`, or the first two `image_urls`.
 
 See [API Testing Guide](docs/api-testing.md#parameter-mapping) for the full parameter table and examples.
 
@@ -194,7 +198,7 @@ For image-to-video, send `mode: "i2v"` and include `start_frame`:
 }
 ```
 
-For reference-to-video, send `mode: "r2v"` with start and end frames, or provide two `image_urls`.
+For reference-to-video, send `mode: "r2v"` or `mode: "ltx-flf2v"` with start and end frames, or provide two `image_urls`.
 
 You can also use the `/run` endpoint for asynchronous jobs and then poll the `/status` to see when the job is done. Or you [add a `webhook` into your request](https://docs.runpod.io/serverless/endpoints/send-requests#webhook-notifications) to be notified when the job is done.
 
@@ -216,6 +220,7 @@ To replace a built-in template:
     - `workflows/hunyuanvideo_1_5_i2v.json`
     - `workflows/ltx_2_3_t2v.json`
     - `workflows/ltx_2_3_i2v.json`
+    - `workflows/ltx-2_3_flf2v.json`
 4.  Rebuild the Docker image.
 
 ## SSH Access

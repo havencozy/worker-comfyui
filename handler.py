@@ -98,6 +98,7 @@ def _refresh_runtime_config():
     global WAN22_R2V_WORKFLOW_PATH
     global LTX23_T2V_WORKFLOW_PATH
     global LTX23_I2V_WORKFLOW_PATH
+    global LTX23_R2V_WORKFLOW_PATH
 
     WAN22_T2V_WORKFLOW_PATH = os.environ.get(
         "WAN22_T2V_WORKFLOW_PATH",
@@ -118,6 +119,10 @@ def _refresh_runtime_config():
     LTX23_I2V_WORKFLOW_PATH = os.environ.get(
         "LTX23_I2V_WORKFLOW_PATH",
         os.path.join(WORKFLOW_DIR, "ltx_2_3_i2v.json"),
+    )
+    LTX23_R2V_WORKFLOW_PATH = os.environ.get(
+        "LTX23_R2V_WORKFLOW_PATH",
+        os.path.join(WORKFLOW_DIR, "ltx-2_3_flf2v.json"),
     )
 
 
@@ -243,7 +248,7 @@ def validate_input(job_input):
     return None, _error(
         "UNSUPPORTED_MODE",
         "Missing or invalid 'mode'. Supported values: 't2v', 'i2v', 'r2v', "
-        "'wan22-t2v', 'wan22-i2v', 'wan22-flf2v', 'ltx-t2v', 'ltx-i2v'",
+        "'wan22-t2v', 'wan22-i2v', 'wan22-flf2v', 'ltx-t2v', 'ltx-i2v', 'ltx-flf2v'",
     )
 
 
@@ -310,6 +315,12 @@ MODEL_MODE_REGISTRY = {
         "model": "ltx-2.3",
         "model_slug": "ltx23",
         "workflow_path": lambda: LTX23_I2V_WORKFLOW_PATH,
+    },
+    "ltx-flf2v": {
+        "mode": "r2v",
+        "model": "ltx-2.3",
+        "model_slug": "ltx23",
+        "workflow_path": lambda: LTX23_R2V_WORKFLOW_PATH,
     },
 }
 

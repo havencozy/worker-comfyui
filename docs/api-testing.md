@@ -40,6 +40,9 @@ All requests must wrap the custom payload under `input`.
 | `r2v` | `wan22-flf2v` | `prompt` plus two frame refs | First-last-frame video. Send `start_frame` and `end_frame`, or at least two `image_urls`. |
 | `hunyuan-t2v` | none | `prompt` | HunyuanVideo 1.5 text-to-video. Requires a deployment image with the Hunyuan custom node and workflows. |
 | `hunyuan-i2v` | none | `prompt`, `start_frame` | HunyuanVideo 1.5 image-to-video. Requires a deployment image with the Hunyuan custom node and workflows. |
+| `ltx-t2v` | none | `prompt` | LTX-2.3 text-to-video. Uses the same resolution/duration/options contract as the other video modes in this worker. |
+| `ltx-i2v` | none | `prompt`, `start_frame` | LTX-2.3 image-to-video. `start_frame_name` controls the uploaded frame filename. |
+| `ltx-flf2v` | none | `prompt` plus two frame refs | LTX-2.3 first-last-frame video. Send `start_frame` and `end_frame`, or at least two `image_urls`. |
 
 For third-party production deployments, see the
 [Third-Party RunPod Integration Guide](third-party-runpod-integration.md).
@@ -50,8 +53,8 @@ For third-party production deployments, see the
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `input.mode` | string | yes | `t2v`, `i2v`, `r2v`, `hunyuan-t2v`, `hunyuan-i2v`, or aliases `wan22-t2v`, `wan22-i2v`, `wan22-flf2v`. |
-| `input.prompt` | string | yes | Positive prompt injected into the selected Wan2.2 workflow. |
+| `input.mode` | string | yes | `t2v`, `i2v`, `r2v`, `hunyuan-t2v`, `hunyuan-i2v`, `ltx-t2v`, `ltx-i2v`, `ltx-flf2v`, or aliases `wan22-t2v`, `wan22-i2v`, `wan22-flf2v`. |
+| `input.prompt` | string | yes | Positive prompt injected into the selected video workflow. |
 | `input.negative_prompt` | string | no | Negative prompt. Defaults to an empty string. |
 | `input.resolution` | string | no | `480p`, `720p`, `1080p`. Defaults to `720p`. |
 | `input.aspect_ratio` | string | no | `auto`, `21:9`, `16:9`, `4:3`, `1:1`, `3:4`, `9:16`. `auto` maps to `16:9`. |
@@ -88,6 +91,8 @@ These rules are implemented in `handler.py` and are applied before the selected 
 | `options.steps` | integer `10..80` | `30` | Injected into both Wan2.2 samplers. High-noise runs `0..steps//2`; low-noise starts at `steps//2`. |
 | `options.guidance_scale` | number `1..20` | `7.5` | Injected into sampler `cfg`. |
 | `generate_audio` | boolean | `false` if omitted | Wan2.2 workflows here are silent. `true` adds `AUDIO_NOT_SUPPORTED_BY_WORKFLOW` to `meta.warnings`. |
+
+These parameter ranges apply to `ltx-t2v`, `ltx-i2v`, and `ltx-flf2v` as well.
 
 Frame count calculation:
 

@@ -208,6 +208,69 @@ If any of these files are missing or placed in the wrong subdirectory, ComfyUI
 will fail when the LTX workflow starts. Unlike Wan2.2, the worker currently
 does not fail fast on missing LTX assets before workflow execution.
 
+## Additional Models for LTX-2.3 FLF2V
+
+The `ltx-flf2v` workflow uses a different LTX model set than the simpler
+`ltx-t2v` / `ltx-i2v` templates above. If you want to run
+`input.mode=ltx-flf2v`, add these extra files to the same network volume.
+
+Create the extra directories used by the workflow:
+
+```bash
+mkdir -p \
+  /workspace/models/diffusion_models/LTXVideo/v2 \
+  /workspace/models/vae_approx
+```
+
+Download the additional FLF2V-specific files to these exact paths:
+
+```bash
+wget --show-progress \
+  -O /workspace/models/diffusion_models/LTXVideo/v2/ltx-2.3-22b-distilled-1.1_transformer_only_fp8_scaled.safetensors \
+  https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/diffusion_models/ltx-2.3-22b-distilled-1.1_transformer_only_fp8_scaled.safetensors
+
+wget --show-progress \
+  -O /workspace/models/text_encoders/gemma_3_12B_it_fp8_scaled.safetensors \
+  https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it_fp8_scaled.safetensors
+
+wget --show-progress \
+  -O /workspace/models/vae/LTX23_audio_vae_bf16_KJ.safetensors \
+  https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/LTX23_audio_vae_bf16.safetensors
+
+wget --show-progress \
+  -O /workspace/models/vae/LTX23_video_vae_bf16_KJ.safetensors \
+  https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/LTX23_video_vae_bf16.safetensors
+
+wget --show-progress \
+  -O /workspace/models/vae_approx/taeltx2_3.safetensors \
+  https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/taeltx2_3.safetensors
+```
+
+The FLF2V workflow still also needs these shared LTX files from the previous
+section:
+
+- `models/loras/ltx-2.3-22b-distilled-lora-dynamic_fro09_avg_rank_105_bf16.safetensors`
+- `models/text_encoders/ltx-2.3_text_projection_bf16.safetensors`
+- `models/latent_upscale_models/ltx-2.3-spatial-upscaler-x2-1.1.safetensors`
+
+Expected additional serverless worker view for `ltx-flf2v`:
+
+```text
+/runpod-volume/
+└── models/
+    ├── diffusion_models/
+    │   └── LTXVideo/
+    │       └── v2/
+    │           └── ltx-2.3-22b-distilled-1.1_transformer_only_fp8_scaled.safetensors
+    ├── text_encoders/
+    │   └── gemma_3_12B_it_fp8_scaled.safetensors
+    ├── vae/
+    │   ├── LTX23_audio_vae_bf16_KJ.safetensors
+    │   └── LTX23_video_vae_bf16_KJ.safetensors
+    └── vae_approx/
+        └── taeltx2_3.safetensors
+```
+
 ## Supported File Extensions
 
 ComfyUI only recognizes files with specific extensions when scanning model directories.

@@ -41,6 +41,9 @@ client code.
 | `wan22-flf2v` | Wan2.2 first-last-frame video | `prompt` and two frame references |
 | `hunyuan-t2v` | HunyuanVideo 1.5 text-to-video | `prompt` |
 | `hunyuan-i2v` | HunyuanVideo 1.5 image-to-video | `prompt`, `start_frame` |
+| `ltx-t2v` | LTX-2.3 text-to-video | `prompt` |
+| `ltx-i2v` | LTX-2.3 image-to-video | `prompt`, `start_frame` |
+| `ltx-flf2v` | LTX-2.3 first-last-frame video | `prompt` and two frame references |
 
 ## Request Body
 
@@ -79,7 +82,7 @@ All requests must wrap generation parameters under `input`.
 | `input.duration` | integer or string | no | `auto` | `auto` or integer seconds from `4` to `15`. Ignored when `options.length` is set. |
 | `input.seed` | integer | no | generated | `0..2147483647`. |
 | `input.generate_audio` | boolean | no | `false` | Accepted for compatibility. Current video workflows return silent videos. |
-| `input.start_frame` | string | i2v | none | Data URI or raw base64 image. Required for `i2v`, `wan22-i2v`, `hunyuan-i2v`. |
+| `input.start_frame` | string | i2v | none | Data URI or raw base64 image. Required for `i2v`, `wan22-i2v`, `hunyuan-i2v`, and `ltx-i2v`. |
 | `input.end_frame` | string | r2v option | none | Data URI or raw base64 image. Used by `r2v`/`wan22-flf2v`. |
 | `input.start_frame_name` | string | no | `start_frame.png` | Filename assigned to uploaded `start_frame`. |
 | `input.end_frame_name` | string | no | `end_frame.png` | Filename assigned to uploaded `end_frame`. |
@@ -93,6 +96,8 @@ All requests must wrap generation parameters under `input`.
 | `input.options.strength` | number | no | `0.6` | `0..1`. Reserved for workflows that expose strength. |
 | `input.options.length` | integer | no | unset | Direct frame count, `1..450`. Overrides `duration`. |
 | `input.options.seed` | integer | no | generated | Accepted when top-level `input.seed` is omitted. |
+
+The `resolution`, `aspect_ratio`, `duration`, `seed`, and `options.*` contract is shared across `wan`, `hunyuan`, and `ltx` modes in this worker. `ltx-flf2v` follows the same two-frame contract as `r2v` / `wan22-flf2v`.
 
 Frame count:
 
@@ -400,4 +405,3 @@ Common error codes:
 - Expect `warnings` to be present but empty for normal jobs.
 - Do not send raw ComfyUI workflow JSON; only the fields listed in this
   contract are part of the public API.
-

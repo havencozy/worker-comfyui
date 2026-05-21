@@ -1,0 +1,23 @@
+{
+  "input": {
+    "mode": "ltx-flf2v",
+    "prompt": "Animate smoothly from the first frame to the last frame with natural motion and stable subject identity",
+    "negative_prompt": "low quality, blur, distorted, flicker",
+    "start_frame": "data:image/png;base64,REPLACE_WITH_REAL_BASE64_START_IMAGE",
+    "start_frame_name": "first.png",
+    "end_frame": "data:image/png;base64,REPLACE_WITH_REAL_BASE64_END_IMAGE",
+    "end_frame_name": "last.png",
+    "resolution": "720p",
+    "duration": 5,
+    "aspect_ratio": "16:9",
+    "seed": 12345,
+    "generate_audio": false,
+    "options": {
+      "fps": 24,
+      "steps": 30,
+      "guidance_scale": 7.5,
+      "motion_strength": 0.5,
+      "strength": 0.6
+    }
+  }
+}
