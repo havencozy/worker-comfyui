@@ -11,7 +11,7 @@ ARG ENABLE_PYTORCH_UPGRADE=true
 ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu130
 ARG COMFYUI_GGUF_REF=main
 ARG COMFYUI_KJNODES_REF=main
-ARG COMFYUI_LTXVIDEO_REF=main
+ARG COMFYUI_LTXVIDEO_REF=master
 
 # Prevents prompts from packages asking for user input during installation
 ENV DEBIAN_FRONTEND=noninteractive
