@@ -134,6 +134,79 @@ You can override the roots with `WAN22_MODEL_ROOTS` using a colon-separated list
 WAN22_MODEL_ROOTS=/runpod-volume/models:/custom/models
 ```
 
+## Preparing LTX-2.3 Video Models on a Network Volume
+
+For LTX-2.3, use the same network volume layout under `/runpod-volume/models/...`.
+The worker payload does not change: use `input.mode=ltx-t2v` or
+`input.mode=ltx-i2v`, and make sure the LTX model files are present on the
+attached volume before the job starts.
+
+Create these directories on the volume:
+
+```bash
+mkdir -p \
+  /workspace/models/diffusion_models \
+  /workspace/models/loras \
+  /workspace/models/text_encoders \
+  /workspace/models/vae \
+  /workspace/models/upscale_models
+```
+
+Download the workflow's required files to these exact paths:
+
+```bash
+wget --show-progress \
+  -O /workspace/models/diffusion_models/ltx-2.3-22b-distilled-UD-Q4_K_M.gguf \
+  https://huggingface.co/unsloth/LTX-2.3-GGUF/resolve/main/distilled/ltx-2.3-22b-distilled-UD-Q4_K_M.gguf
+
+wget --show-progress \
+  -O /workspace/models/loras/ltx-2.3-22b-distilled-lora-dynamic_fro09_avg_rank_105_bf16.safetensors \
+  https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/loras/ltx-2.3-22b-distilled-lora-dynamic_fro09_avg_rank_105_bf16.safetensors
+
+wget --show-progress \
+  -O /workspace/models/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors \
+  https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors
+
+wget --show-progress \
+  -O /workspace/models/text_encoders/ltx-2.3_text_projection_bf16.safetensors \
+  https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/text_encoders/ltx-2.3_text_projection_bf16.safetensors
+
+wget --show-progress \
+  -O /workspace/models/vae/ltx-2.3-22b-dev_audio_vae.safetensors \
+  https://huggingface.co/unsloth/LTX-2.3-GGUF/resolve/main/vae/ltx-2.3-22b-dev_audio_vae.safetensors
+
+wget --show-progress \
+  -O /workspace/models/vae/ltx-2.3-22b-dev_video_vae.safetensors \
+  https://huggingface.co/unsloth/LTX-2.3-GGUF/resolve/main/vae/ltx-2.3-22b-dev_video_vae.safetensors
+
+wget --show-progress \
+  -O /workspace/models/upscale_models/ltx-2.3-spatial-upscaler-x2-1.1.safetensors \
+  https://huggingface.co/Oveei/LTX-2.3/resolve/main/ltx-2.3-spatial-upscaler-x2-1.1.safetensors
+```
+
+Expected serverless worker view after attaching the same volume:
+
+```text
+/runpod-volume/
+└── models/
+    ├── diffusion_models/
+    │   └── ltx-2.3-22b-distilled-UD-Q4_K_M.gguf
+    ├── loras/
+    │   └── ltx-2.3-22b-distilled-lora-dynamic_fro09_avg_rank_105_bf16.safetensors
+    ├── text_encoders/
+    │   ├── gemma_3_12B_it_fp4_mixed.safetensors
+    │   └── ltx-2.3_text_projection_bf16.safetensors
+    ├── vae/
+    │   ├── ltx-2.3-22b-dev_audio_vae.safetensors
+    │   └── ltx-2.3-22b-dev_video_vae.safetensors
+    └── upscale_models/
+        └── ltx-2.3-spatial-upscaler-x2-1.1.safetensors
+```
+
+If any of these files are missing or placed in the wrong subdirectory, ComfyUI
+will fail when the LTX workflow starts. Unlike Wan2.2, the worker currently
+does not fail fast on missing LTX assets before workflow execution.
+
 ## Supported File Extensions
 
 ComfyUI only recognizes files with specific extensions when scanning model directories.

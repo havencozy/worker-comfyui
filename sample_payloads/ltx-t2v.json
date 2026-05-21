@@ -1,0 +1,19 @@
+{
+  "input": {
+    "mode": "ltx-t2v",
+    "prompt": "A cinematic wide shot of a futuristic train crossing a desert at sunset, smooth camera motion, realistic lighting",
+    "negative_prompt": "low quality, blur, distorted, flicker",
+    "resolution": "720p",
+    "duration": "auto",
+    "aspect_ratio": "16:9",
+    "seed": 12345,
+    "generate_audio": false,
+    "options": {
+      "fps": 24,
+      "steps": 30,
+      "guidance_scale": 7.5,
+      "motion_strength": 0.5,
+      "strength": 0.6
+    }
+  }
+}
